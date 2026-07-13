@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || "{}");
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const storage = getStorage(app); // Storage initialize kiya
 
 const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
 
@@ -21,7 +19,6 @@ export default function App() {
   const [showInvoice, setShowInvoice] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [custInfo, setCustInfo] = useState({ name: '', address: '' });
-  const [uploading, setUploading] = useState(false); // Uploading state
 
   useEffect(() => {
     const q = query(collection(db, "products"), orderBy("name"));
@@ -43,40 +40,18 @@ export default function App() {
 
   const addProduct = async (e) => {
     e.preventDefault();
-    const { name, price, category, stock } = e.target;
-    const fileInput = e.target.imgFile;
-    let imgUrl = "";
-
-    // Agar user ne gallery se image select ki hai
-    if (fileInput.files && fileInput.files[0]) {
-      setUploading(true);
-      try {
-        const file = fileInput.files[0];
-        const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        imgUrl = await getDownloadURL(storageRef);
-      } catch (error) {
-        console.error("Upload error:", error);
-        alert("Image upload nahi ho paayi! Firebase Storage rules check karein.");
-        setUploading(false);
-        return;
-      }
-    } else {
-      // Agar file nahi hai, toh fallback text/emoji
-      imgUrl = e.target.imgText.value || "📦";
-    }
-
+    const { name, price, img, category, stock } = e.target;
+    
     await addDoc(collection(db, "products"), { 
       name: name.value, 
       price: Number(price.value), 
-      img: imgUrl, 
+      img: img.value || "📦", 
       category: category.value, 
       stock: Number(stock.value) 
     });
     
-    setUploading(false);
     e.target.reset();
-    alert("Saaman photo ke saath jud gaya!");
+    alert("Saaman kamiyabi se jud gaya!");
   };
 
   const updateStock = async (id, newStock) => {
@@ -84,7 +59,6 @@ export default function App() {
   };
 
   const cartTotal = cart.reduce((a, c) => a + c.price * c.qty, 0);
-  
   const filtered = products.filter(p => 
     p.name.toLowerCase().includes(search.toLowerCase()) && 
     (activeCategory === "All" || p.category === activeCategory)
@@ -119,32 +93,20 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-blue-50 via-white to-green-50 text-gray-900'} pb-10 transition-all duration-500`}>
-      
-      {/* Header */}
       <header className="p-4 bg-white/80 backdrop-blur-md shadow-md sticky top-0 z-50 flex justify-between items-center border-b border-blue-50">
-        <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-green-500 to-orange-500 tracking-tighter italic">
-          DAILY NEEDS HUB
-        </h1>
+        <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-green-500 to-orange-500 tracking-tighter italic">DAILY NEEDS HUB</h1>
         <div className="flex items-center gap-3">
            <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full">{darkMode ? '☀️' : '🌙'}</button>
-           <button onClick={() => setIsCartOpen(true)} className="bg-gradient-to-r from-green-500 to-blue-600 text-white px-4 py-2 rounded-full font-bold text-sm shadow-md active:scale-95 transition-all">
-             🛒 ₹{cartTotal}
-           </button>
+           <button onClick={() => setIsCartOpen(true)} className="bg-gradient-to-r from-green-500 to-blue-600 text-white px-4 py-2 rounded-full font-bold text-sm shadow-md">🛒 ₹{cartTotal}</button>
         </div>
       </header>
 
       <div className="max-w-md mx-auto">
-        {/* Search Bar */}
         <div className="p-4">
-          <input 
-            type="text" placeholder="🔍 Search (Milk, Soap, Kitkat...)" 
-            className="w-full p-4 bg-white/90 rounded-2xl border-2 border-green-100 text-sm focus:border-blue-400 focus:outline-none shadow-sm transition-all"
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <input type="text" placeholder="🔍 Search (Milk, Soap, Kitkat...)" className="w-full p-4 bg-white/90 rounded-2xl border-2 border-green-100 text-sm focus:outline-none shadow-sm" onChange={(e) => setSearch(e.target.value)} />
         </div>
 
         {window.location.pathname === '/admin' ? (
-          /* Admin View */
           <div className="p-4">
             <div className="bg-white p-6 rounded-3xl shadow-xl border border-blue-50 text-black">
                <h2 className="text-xl font-bold mb-4 text-blue-600">Admin Dashboard</h2>
@@ -158,27 +120,12 @@ export default function App() {
                         <input name="price" type="number" placeholder="Price (₹)" className="border p-3 rounded-xl bg-gray-50" required />
                         <input name="stock" type="number" placeholder="Stock Qty" className="border p-3 rounded-xl bg-gray-50" required />
                       </div>
-                      
-                      {/* DIRECT GALLERY IMAGE UPLOAD INPUT */}
-                      <div className="border p-3 rounded-xl bg-gray-50 flex flex-col gap-1">
-                        <label className="text-xs font-bold text-gray-500">Gallery se Photo Chunein:</label>
-                        <input name="imgFile" type="file" accept="image/*" className="text-xs" />
-                      </div>
-                      
-                      <div className="text-center text-xs text-gray-400 font-bold">- YA -</div>
-                      
-                      <input name="imgText" placeholder="Emoji daalein (Agar photo nahi hai)" className="border p-3 rounded-xl bg-gray-50" />
-                      
+                      <input name="img" placeholder="Image URL Link ya Emoji daalein" className="border p-3 rounded-xl bg-gray-50" required />
                       <select name="category" className="border p-3 rounded-xl bg-gray-50">
                         {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
-                      
-                      <button type="submit" disabled={uploading} className="bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg disabled:bg-gray-400">
-                        {uploading ? "Uploading Photo..." : "ADD ITEM"}
-                      </button>
+                      <button type="submit" className="bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg">ADD ITEM</button>
                     </form>
-                    
-                    {/* Manage Stock Section */}
                     <div className="space-y-2">
                       <h3 className="font-bold border-b pb-2">Manage Stock</h3>
                       {products.map(p => (
@@ -196,7 +143,6 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Customer View */
           <>
             <div className="px-4 mb-2">
               <div className="bg-gradient-to-r from-orange-500 via-blue-500 to-green-500 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
@@ -204,18 +150,15 @@ export default function App() {
                   <h2 className="text-2xl font-black mb-1 tracking-wide">Aapki Apni Dukan! 🛒</h2>
                   <p className="text-xs opacity-90 font-medium italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
                 </div>
-                <div className="absolute -right-4 -bottom-4 text-8xl opacity-15">🛍️</div>
               </div>
             </div>
 
-            {/* Categories */}
             <div className="flex gap-2 p-4 overflow-x-auto no-scrollbar">
               {categories.map(c => (
                 <button key={c} onClick={() => setActiveCategory(c)} className={`px-5 py-2 rounded-full text-xs font-extrabold whitespace-nowrap transition-all duration-300 ${getCategoryColor(c)}`}>{c}</button>
               ))}
             </div>
 
-            {/* Products Grid */}
             <main className="p-4 grid grid-cols-2 gap-4">
               {filtered.length === 0 ? (
                 <div className="col-span-2 text-center py-10 text-gray-400 font-bold bg-white/50 rounded-2xl border">Is category mein abhi koi saaman nahi hai. "All" par click karein!</div>
@@ -223,19 +166,31 @@ export default function App() {
                 filtered.map(p => (
                   <div key={p.id} className="bg-white/90 backdrop-blur-sm p-3 rounded-[2rem] shadow-sm border border-white relative active:scale-95 transition-all">
                      <button onClick={() => toggleWishlist(p)} className="absolute top-4 right-4 z-10 p-2 bg-white/80 rounded-full shadow-sm text-sm">{wishlist.find(x => x.id === p.id) ? '❤️' : '🤍'}</button>
-                     <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-blue-50 via-white to-green-50 rounded-2xl overflow-hidden">
-                       {renderProductImage(p.img)}
-                     </div>
+                     <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-blue-50 via-white to-green-50 rounded-2xl overflow-hidden">{renderProductImage(p.img)}</div>
                      <div className="px-1 text-center">
                        <h3 className="font-bold text-gray-700 text-sm truncate">{p.name}</h3>
                        <p className="text-lg font-black text-blue-600">₹{p.price}</p>
                        <p className={`text-[9px] font-bold mt-1 ${p.stock > 0 ? 'text-green-500' : 'text-red-500'}`}>{p.stock > 0 ? `${p.stock} in Stock` : 'Out of Stock'}</p>
-                       <button onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`w-full mt-3 py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md ${p.stock > 0 ? 'bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white shadow-blue-100' : 'bg-gray-200 text-gray-400'}`}>ADD TO BAG</button>
+                       <button onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`w-full mt-3 py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md ${p.stock > 0 ? 'bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>ADD TO BAG</button>
                      </div>
                   </div>
                 ))
               )}
             </main>
+
+            {/* ADDED FOOTER WITH ADDRESS & CONTACT INFO */}
+            <footer className="p-8 bg-white/80 backdrop-blur-sm mt-10 border-t border-blue-50 text-center rounded-t-[2rem] shadow-inner">
+              <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500 mb-2">DAILY NEEDS HUB</h3>
+              <p className="text-xs text-gray-500 mb-4 leading-relaxed font-medium">
+                Shop No. 4, Main Market Road, <br />
+                Near City Tower, India [Pin: 123456]
+              </p>
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-2xl border border-green-100 inline-block w-full max-w-xs shadow-sm">
+                <p className="text-[10px] font-bold text-green-600 uppercase mb-1 tracking-wider">Order on WhatsApp</p>
+                <p className="text-lg font-black text-gray-800">+91 918637589429</p>
+              </div>
+              <p className="mt-6 text-[9px] text-gray-400 font-bold tracking-wider">© 2026 DAILY NEEDS HUB - FAST DELIVERY</p>
+            </footer>
           </>
         )}
       </div>
@@ -281,4 +236,4 @@ export default function App() {
       )}
     </div>
   );
-                      }
+}

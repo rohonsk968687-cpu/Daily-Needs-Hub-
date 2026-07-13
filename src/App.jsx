@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 
 const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || "{}");
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
 
 const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
@@ -21,12 +23,21 @@ export default function App() {
   const [custInfo, setCustInfo] = useState({ name: '', address: '' });
 
   useEffect(() => {
+    signInAnonymously(auth).catch(err => console.error("Auth Error:", err));
+
     const q = query(collection(db, "products"), orderBy("name"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
     return () => unsubscribe();
   }, []);
+
+  // Discount ke baad ka final price nikalne ke liye function
+  const getDiscountedPrice = (price, discount) => {
+    if (!discount || discount <= 0) return price;
+    const discountAmount = (price * discount) / 100;
+    return Math.round(price - discountAmount);
+  };
 
   const addToCart = (p) => {
     if (p.stock <= 0) return alert("Maaf karein, ye stock mein nahi hai!");
@@ -41,10 +52,10 @@ export default function App() {
   const addProduct = async (e) => {
     e.preventDefault();
     
-    // Form ki values ko sahi se nikalne ke liye explicit selection
     const itemName = e.target.elements.itemName.value;
     const itemPrice = e.target.elements.itemPrice.value;
     const itemStock = e.target.elements.itemStock.value;
+    const itemDiscount = e.target.elements.itemDiscount.value; // Naya discount input
     const itemImg = e.target.elements.itemImg.value;
     const itemCategory = e.target.elements.itemCategory.value;
     
@@ -52,24 +63,27 @@ export default function App() {
       await addDoc(collection(db, "products"), { 
         name: itemName, 
         price: Number(itemPrice), 
+        stock: Number(itemStock),
+        discount: Number(itemDiscount) || 0, // Default 0 discount
         img: itemImg || "📦", 
-        category: itemCategory, 
-        stock: Number(itemStock) 
+        category: itemCategory
       });
       
       e.target.reset();
-      alert("Saaman kamiyabi se jud gaya!");
+      alert("Saaman kamiyabi se discount ke sath jud gaya!");
     } catch (error) {
       console.error("Error adding product: ", error);
       alert("Database error! Kripya check karein.");
     }
   };
 
-  const updateStock = async (id, newStock) => {
-    await updateDoc(doc(db, "products", id), { stock: Number(newStock) });
+  const updateProductData = async (id, field, value) => {
+    await updateDoc(doc(db, "products", id), { [field]: Number(value) });
   };
 
-  const cartTotal = cart.reduce((a, c) => a + c.price * c.qty, 0);
+  // Cart total ab final discounted price ke hisab se calculate hoga
+  const cartTotal = cart.reduce((a, c) => a + getDiscountedPrice(c.price, c.discount) * c.qty, 0);
+  
   const filtered = products.filter(p => 
     p.name.toLowerCase().includes(search.toLowerCase()) && 
     (activeCategory === "All" || p.category === activeCategory)
@@ -77,7 +91,11 @@ export default function App() {
 
   const handleOrder = () => {
     if(!custInfo.name || !custInfo.address) return alert("Naam aur Pata bharna zaruri hai!");
-    const itemsMsg = cart.map(i => `${i.name} (x${i.qty})`).join(", ");
+    const itemsMsg = cart.map(i => {
+      const finalP = getDiscountedPrice(i.price, i.discount);
+      return `${i.name} (x${i.qty}) - ₹${finalP * i.qty}`;
+    }).join(", ");
+    
     const msg = `Naya Order - Daily Needs Hub\n\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal: ₹${cartTotal}\n\nKripya Payment details bhejein.`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     setShowInvoice(true);
@@ -127,9 +145,10 @@ export default function App() {
                  <div className="space-y-6">
                     <form onSubmit={addProduct} className="grid gap-3">
                       <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input name="itemPrice" type="number" placeholder="Price (₹)" className="border p-3 rounded-xl bg-gray-50" required />
-                        <input name="itemStock" type="number" placeholder="Stock Qty" className="border p-3 rounded-xl bg-gray-50" required />
+                      <div className="grid grid-cols-3 gap-2">
+                        <input name="itemPrice" type="number" placeholder="MRP (₹)" className="border p-3 rounded-xl bg-gray-50" required />
+                        <input name="itemDiscount" type="number" placeholder="Disc %" className="border p-3 rounded-xl bg-gray-50" />
+                        <input name="itemStock" type="number" placeholder="Stock" className="border p-3 rounded-xl bg-gray-50" required />
                       </div>
                       <input name="itemImg" placeholder="Image URL Link ya Emoji daalein" className="border p-3 rounded-xl bg-gray-50" required />
                       <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50">
@@ -137,14 +156,25 @@ export default function App() {
                       </select>
                       <button type="submit" className="bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg">ADD ITEM</button>
                     </form>
+                    
                     <div className="space-y-2">
-                      <h3 className="font-bold border-b pb-2">Manage Stock</h3>
+                      <h3 className="font-bold border-b pb-2">Manage Stock & Discounts</h3>
                       {products.map(p => (
-                        <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
-                          <span className="text-xs font-bold">{p.name} (Qty: {p.stock})</span>
-                          <div className="flex gap-2">
-                             <input type="number" className="w-16 p-1 border rounded" onBlur={(e) => updateStock(p.id, e.target.value)} placeholder="New" />
-                             <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500">🗑️</button>
+                        <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-gray-700">{p.name}</span>
+                            <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500 text-xs">🗑️ Delete</button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 text-[10px]">
+                            <div>
+                              Stock: <input type="number" className="w-12 p-1 border rounded" defaultValue={p.stock} onBlur={(e) => updateProductData(p.id, "stock", e.target.value)} />
+                            </div>
+                            <div>
+                              Price: ₹<input type="number" className="w-12 p-1 border rounded" defaultValue={p.price} onBlur={(e) => updateProductData(p.id, "price", e.target.value)} />
+                            </div>
+                            <div>
+                              Disc%: <input type="number" className="w-10 p-1 border rounded" defaultValue={p.discount || 0} onBlur={(e) => updateProductData(p.id, "discount", e.target.value)} />
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -155,6 +185,7 @@ export default function App() {
           </div>
         ) : (
           <>
+            {/* Banner Section */}
             <div className="px-4 mb-2">
               <div className="bg-gradient-to-r from-orange-500 via-blue-500 to-green-500 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
                 <div className="relative z-10">
@@ -164,31 +195,53 @@ export default function App() {
               </div>
             </div>
 
+            {/* Categories */}
             <div className="flex gap-2 p-4 overflow-x-auto no-scrollbar">
               {categories.map(c => (
                 <button key={c} onClick={() => setActiveCategory(c)} className={`px-5 py-2 rounded-full text-xs font-extrabold whitespace-nowrap transition-all duration-300 ${getCategoryColor(c)}`}>{c}</button>
               ))}
             </div>
 
+            {/* Product Grid */}
             <main className="p-4 grid grid-cols-2 gap-4">
               {filtered.length === 0 ? (
-                <div className="col-span-2 text-center py-10 text-gray-400 font-bold bg-white/50 rounded-2xl border">Is category mein abhi koi saaman nahi hai. "All" par click karein!</div>
+                <div className="col-span-2 text-center py-10 text-gray-400 font-bold bg-white/50 rounded-2xl border">Is category mein abhi koi saaman nahi hai.</div>
               ) : (
-                filtered.map(p => (
-                  <div key={p.id} className="bg-white/90 backdrop-blur-sm p-3 rounded-[2rem] shadow-sm border border-white relative active:scale-95 transition-all">
-                     <button onClick={() => toggleWishlist(p)} className="absolute top-4 right-4 z-10 p-2 bg-white/80 rounded-full shadow-sm text-sm">{wishlist.find(x => x.id === p.id) ? '❤️' : '🤍'}</button>
-                     <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-blue-50 via-white to-green-50 rounded-2xl overflow-hidden">{renderProductImage(p.img)}</div>
-                     <div className="px-1 text-center">
-                       <h3 className="font-bold text-gray-700 text-sm truncate">{p.name}</h3>
-                       <p className="text-lg font-black text-blue-600">₹{p.price}</p>
-                       <p className={`text-[9px] font-bold mt-1 ${p.stock > 0 ? 'text-green-500' : 'text-red-500'}`}>{p.stock > 0 ? `${p.stock} in Stock` : 'Out of Stock'}</p>
-                       <button onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`w-full mt-3 py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md ${p.stock > 0 ? 'bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>ADD TO BAG</button>
-                     </div>
-                  </div>
-                ))
+                filtered.map(p => {
+                  const hasDiscount = p.discount > 0;
+                  const finalPrice = getDiscountedPrice(p.price, p.discount);
+                  
+                  return (
+                    <div key={p.id} className="bg-white/90 backdrop-blur-sm p-3 rounded-[2rem] shadow-sm border border-white relative active:scale-95 transition-all">
+                       {/* Discount Badge */}
+                       {hasDiscount && (
+                         <span className="absolute top-4 left-4 z-10 bg-red-500 text-white text-[9px] font-black px-2 py-1 rounded-full shadow-md animate-pulse">
+                           {p.discount}% OFF
+                         </span>
+                       )}
+                       <button onClick={() => toggleWishlist(p)} className="absolute top-4 right-4 z-10 p-2 bg-white/80 rounded-full shadow-sm text-sm">{wishlist.find(x => x.id === p.id) ? '❤️' : '🤍'}</button>
+                       <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-blue-50 via-white to-green-50 rounded-2xl overflow-hidden">{renderProductImage(p.img)}</div>
+                       <div className="px-1 text-center">
+                         <h3 className="font-bold text-gray-700 text-sm truncate">{p.name}</h3>
+                         
+                         {/* Price Section with Discount logic */}
+                         <div className="flex items-center justify-center gap-2 mt-1">
+                           <span className="text-lg font-black text-blue-600">₹{finalPrice}</span>
+                           {hasDiscount && (
+                             <span className="text-xs text-gray-400 line-through font-bold">₹{p.price}</span>
+                           )}
+                         </div>
+
+                         <p className={`text-[9px] font-bold mt-1 ${p.stock > 0 ? 'text-green-500' : 'text-red-500'}`}>{p.stock > 0 ? `${p.stock} in Stock` : 'Out of Stock'}</p>
+                         <button onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`w-full mt-3 py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md ${p.stock > 0 ? 'bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>ADD TO BAG</button>
+                       </div>
+                    </div>
+                  );
+                })
               )}
             </main>
 
+            {/* Footer */}
             <footer className="p-8 bg-white/80 backdrop-blur-sm mt-10 border-t border-blue-50 text-center rounded-t-[2rem] shadow-inner">
               <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500 mb-2">DAILY NEEDS HUB</h3>
               <p className="text-xs text-gray-500 mb-4 leading-relaxed font-medium">
@@ -216,12 +269,15 @@ export default function App() {
                   <input placeholder="Aapka Naam" className="w-full p-3 border border-blue-100 rounded-xl bg-gray-50 text-sm" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
                   <textarea placeholder="Delivery Address" className="w-full p-3 border border-blue-100 rounded-xl bg-gray-50 text-sm" rows="3" onChange={(e) => setCustInfo({...custInfo, address: e.target.value})} />
                 </div>
-                {cart.map(item => (
-                  <div key={item.id} className="flex justify-between py-3 border-b border-gray-100 text-xs">
-                    <span><b>{item.qty}x</b> {item.name}</span>
-                    <span className="font-bold text-blue-600">₹{item.price * item.qty}</span>
-                  </div>
-                ))}
+                {cart.map(item => {
+                  const finalP = getDiscountedPrice(item.price, item.discount);
+                  return (
+                    <div key={item.id} className="flex justify-between py-3 border-b border-gray-100 text-xs">
+                      <span><b>{item.qty}x</b> {item.name} {item.discount > 0 && <span className="text-[9px] text-red-500">(-{item.discount}%)</span>}</span>
+                      <span className="font-bold text-blue-600">₹{finalP * item.qty}</span>
+                    </div>
+                  );
+                })}
                 <div className="mt-8">
                   <div className="flex justify-between text-2xl font-black mb-6 text-green-600"><span>Total:</span><span>₹{cartTotal}</span></div>
                   <button onClick={handleOrder} className="w-full bg-gradient-to-r from-blue-500 to-green-500 text-white py-4 rounded-2xl font-bold shadow-lg text-lg mb-2">WhatsApp Order</button>
@@ -229,7 +285,6 @@ export default function App() {
                 </div>
               </>
             ) : (
-              /* Invoice */
               <div className="text-center pt-10">
                 <div className="text-5xl mb-4">✅</div>
                 <h2 className="text-xl font-bold mb-2">Order Confirmed!</h2>

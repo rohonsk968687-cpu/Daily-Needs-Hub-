@@ -40,18 +40,29 @@ export default function App() {
 
   const addProduct = async (e) => {
     e.preventDefault();
-    const { name, price, img, category, stock } = e.target;
     
-    await addDoc(collection(db, "products"), { 
-      name: name.value, 
-      price: Number(price.value), 
-      img: img.value || "📦", 
-      category: category.value, 
-      stock: Number(stock.value) 
-    });
+    // Form ki values ko sahi se nikalne ke liye explicit selection
+    const itemName = e.target.elements.itemName.value;
+    const itemPrice = e.target.elements.itemPrice.value;
+    const itemStock = e.target.elements.itemStock.value;
+    const itemImg = e.target.elements.itemImg.value;
+    const itemCategory = e.target.elements.itemCategory.value;
     
-    e.target.reset();
-    alert("Saaman kamiyabi se jud gaya!");
+    try {
+      await addDoc(collection(db, "products"), { 
+        name: itemName, 
+        price: Number(itemPrice), 
+        img: itemImg || "📦", 
+        category: itemCategory, 
+        stock: Number(itemStock) 
+      });
+      
+      e.target.reset();
+      alert("Saaman kamiyabi se jud gaya!");
+    } catch (error) {
+      console.error("Error adding product: ", error);
+      alert("Database error! Kripya check karein.");
+    }
   };
 
   const updateStock = async (id, newStock) => {
@@ -115,13 +126,13 @@ export default function App() {
                ) : (
                  <div className="space-y-6">
                     <form onSubmit={addProduct} className="grid gap-3">
-                      <input name="name" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
+                      <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
                       <div className="grid grid-cols-2 gap-2">
-                        <input name="price" type="number" placeholder="Price (₹)" className="border p-3 rounded-xl bg-gray-50" required />
-                        <input name="stock" type="number" placeholder="Stock Qty" className="border p-3 rounded-xl bg-gray-50" required />
+                        <input name="itemPrice" type="number" placeholder="Price (₹)" className="border p-3 rounded-xl bg-gray-50" required />
+                        <input name="itemStock" type="number" placeholder="Stock Qty" className="border p-3 rounded-xl bg-gray-50" required />
                       </div>
-                      <input name="img" placeholder="Image URL Link ya Emoji daalein" className="border p-3 rounded-xl bg-gray-50" required />
-                      <select name="category" className="border p-3 rounded-xl bg-gray-50">
+                      <input name="itemImg" placeholder="Image URL Link ya Emoji daalein" className="border p-3 rounded-xl bg-gray-50" required />
+                      <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50">
                         {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <button type="submit" className="bg-blue-600 text-white p-4 rounded-xl font-bold shadow-lg">ADD ITEM</button>
@@ -178,7 +189,6 @@ export default function App() {
               )}
             </main>
 
-            {/* ADDED FOOTER WITH ADDRESS & CONTACT INFO */}
             <footer className="p-8 bg-white/80 backdrop-blur-sm mt-10 border-t border-blue-50 text-center rounded-t-[2rem] shadow-inner">
               <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500 mb-2">DAILY NEEDS HUB</h3>
               <p className="text-xs text-gray-500 mb-4 leading-relaxed font-medium">

@@ -47,10 +47,26 @@ export default function App() {
     return Math.round(price - (price * discount) / 100);
   };
 
+  // Cart Management Functions
   const addToCart = (p) => {
     if (p.stock <= 0) return alert("Maaf karein, ye stock mein nahi hai!");
     const exist = cart.find(x => x.id === p.id);
-    setCart(exist ? cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty + 1 } : x) : [...cart, { ...p, qty: 1 }]);
+    if (exist) {
+      if (exist.qty >= p.stock) return alert("Maaf karein, stock khatam ho gaya!");
+      setCart(cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty + 1 } : x));
+    } else {
+      setCart([...cart, { ...p, qty: 1 }]);
+    }
+  };
+
+  const removeFromCart = (p) => {
+    const exist = cart.find(x => x.id === p.id);
+    if (!exist) return;
+    if (exist.qty === 1) {
+      setCart(cart.filter(x => x.id !== p.id));
+    } else {
+      setCart(cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty - 1 } : x));
+    }
   };
 
   const toggleWishlist = (p) => {
@@ -60,7 +76,6 @@ export default function App() {
   const addProduct = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
-    
     try {
       await addDoc(collection(db, "products"), { 
         name: el.itemName.value, 
@@ -72,11 +87,10 @@ export default function App() {
         isBestSeller: el.bestSeller.checked,
         isNewArrival: el.newArrival.checked
       });
-      
       e.target.reset();
-      alert("Saaman kamiyabi se discount aur badges ke sath jud gaya!");
+      alert("Saaman kamiyabi se jud gaya!");
     } catch (error) {
-      alert("Database error! Kripya check karein.");
+      alert("Database error!");
     }
   };
 
@@ -187,7 +201,6 @@ export default function App() {
                         <input name="itemStock" type="number" placeholder="Stock" className="border p-3 rounded-xl bg-gray-50" required />
                       </div>
                       
-                      {/* NEW ADMIN BADGE CONTROL CHECKBOXES */}
                       <div className="flex gap-6 p-2 bg-gray-50 rounded-xl border border-dashed text-xs font-bold text-gray-600">
                         <label className="flex items-center gap-1 cursor-pointer">
                           <input type="checkbox" name="bestSeller" className="rounded" /> ✨ Best Seller
@@ -210,7 +223,7 @@ export default function App() {
                         <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2">
                           <div className="flex justify-between items-center">
                             <span className="text-xs font-bold text-gray-700">{p.name}</span>
-                            <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500 text-xs">🗑--- Delete</button>
+                            <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500 text-xs">🗑 Delete</button>
                           </div>
                           <div className="grid grid-cols-3 gap-1 text-[10px]">
                             <div>Stock: <input type="number" className="w-12 p-1 border rounded" defaultValue={p.stock} onBlur={(e) => updateProductData(p.id, "stock", e.target.value)} /></div>
@@ -264,11 +277,11 @@ export default function App() {
                 filtered.map(p => {
                   const hasDiscount = p.discount > 0;
                   const finalPrice = getDiscountedPrice(p.price, p.discount);
+                  const cartItem = cart.find(x => x.id === p.id);
                   
                   return (
                     <div key={p.id} className="bg-white/90 backdrop-blur-sm p-3 rounded-[2rem] shadow-sm border border-white relative active:scale-95 transition-all">
                        
-                       {/* DYNAMIC BADGES ON PRODUCT CARDS */}
                        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 max-w-[80px]">
                           {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md shadow-sm text-center">{p.discount}% OFF</span>}
                           {p.isBestSeller && <span className="bg-yellow-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-md shadow-sm text-center">✨ BEST</span>}
@@ -288,7 +301,22 @@ export default function App() {
                            {hasDiscount && <span className="text-xs text-gray-400 line-through font-bold">₹{p.price}</span>}
                          </div>
                          <p className={`text-[9px] font-bold mt-1 ${p.stock > 0 ? 'text-green-500' : 'text-red-500'}`}>{p.stock > 0 ? `${p.stock} in Stock` : 'Out of Stock'}</p>
-                         <button onClick={() => addToCart(p)} disabled={p.stock <= 0} className={`w-full mt-3 py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md ${p.stock > 0 ? 'bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white shadow-blue-100' : 'bg-gray-200 text-gray-400'}`}>ADD TO BAG</button>
+                         
+                         {/* DYNAMIC QUANTITY SELECTOR OR ADD BUTTON */}
+                         <div className="mt-3">
+                           {p.stock <= 0 ? (
+                             <button disabled className="w-full py-3 rounded-2xl font-bold text-[10px] bg-gray-200 text-gray-400 tracking-wider">OUT OF STOCK</button>
+                           ) : cartItem ? (
+                             <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-emerald-500 rounded-2xl text-white p-1 font-black shadow-md">
+                               <button onClick={() => removeFromCart(p)} className="px-3 py-1.5 text-sm bg-white/20 rounded-xl active:scale-90 transition-all">-</button>
+                               <span className="text-xs tracking-wider">{cartItem.qty} Qty</span>
+                               <button onClick={() => addToCart(p)} className="px-3 py-1.5 text-sm bg-white/20 rounded-xl active:scale-90 transition-all">+</button>
+                             </div>
+                           ) : (
+                             <button onClick={() => addToCart(p)} className="w-full py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white shadow-blue-100">ADD TO BAG</button>
+                           )}
+                         </div>
+
                        </div>
                     </div>
                   );
@@ -296,7 +324,7 @@ export default function App() {
               )}
             </main>
 
-            {/* TRUST & POLICY FOOTER */}
+            {/* Trust Footer */}
             <footer className="p-8 bg-white/80 backdrop-blur-sm mt-10 border-t border-blue-50 text-center rounded-t-[2rem] shadow-inner mb-24">
               <h3 className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500 mb-2">DAILY NEEDS HUB</h3>
               <p className="text-xs text-gray-500 mb-4 font-medium leading-relaxed">Shop No. 4, Main Market Road, Near City Tower</p>
@@ -314,7 +342,7 @@ export default function App() {
               <p className="mt-6 text-[9px] text-gray-400 font-bold tracking-wider">© 2026 DAILY NEEDS HUB - FAST DELIVERY</p>
             </footer>
 
-            {/* FIXED BOTTOM NAVIGATION BAR FOR CATEGORIES */}
+            {/* Sticky Bottom Nav */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-gray-200/80 p-3 z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] rounded-t-[2rem]">
               <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 px-2">
                 {categories.map(c => (
@@ -326,10 +354,10 @@ export default function App() {
         )}
       </div>
 
-      {/* Full Cart Drawer System */}
+      {/* Cart Drawer & Premium Invoice System */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
-          <div className="w-full max-w-xs bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
+          <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
             {!showInvoice ? (
               <>
                 <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500 mb-6">Aapka Bag</h2>
@@ -340,28 +368,73 @@ export default function App() {
                 {cart.map(item => {
                   const finalP = getDiscountedPrice(item.price, item.discount);
                   return (
-                    <div key={item.id} className="flex justify-between py-3 border-b border-gray-100 text-xs">
-                      <span><b>{item.qty}x</b> {item.name} {item.discount > 0 && <span className="text-[9px] text-red-500">(-{item.discount}%)</span>}</span>
-                      <span className="font-bold text-blue-600">₹{finalP * item.qty}</span>
+                    <div key={item.id} className="flex justify-between py-3 border-b border-gray-100 text-xs items-center">
+                      <div>
+                        <span className="font-bold text-gray-800">{item.name}</span>
+                        {item.discount > 0 && <span className="ml-1 text-[8px] bg-red-100 text-red-500 px-1 rounded">-{item.discount}%</span>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-gray-400 font-medium">{item.qty} pcs</span>
+                        <span className="font-bold text-blue-600">₹{finalP * item.qty}</span>
+                      </div>
                     </div>
                   );
                 })}
                 <div className="mt-8">
                   <div className="flex justify-between text-2xl font-black mb-6 text-green-600"><span>Total:</span><span>₹{cartTotal}</span></div>
-                  <button onClick={handleOrder} className="w-full bg-gradient-to-r from-blue-500 to-green-500 text-white py-4 rounded-2xl font-bold shadow-lg text-lg mb-2">WhatsApp Order</button>
-                  <button onClick={() => setIsCartOpen(false)} className="w-full py-2 text-gray-400 text-xs font-bold">CLOSE</button>
+                  <button onClick={handleOrder} className="w-full bg-gradient-to-r from-blue-500 to-green-500 text-white py-4 rounded-2xl font-bold shadow-lg text-lg mb-2 active:scale-95 transition-all">WhatsApp Order</button>
+                  <button onClick={() => setIsCartOpen(false)} className="w-full py-2 text-gray-400 text-xs font-bold text-center">CLOSE</button>
                 </div>
               </>
             ) : (
-              <div className="text-center pt-10">
-                <div className="text-5xl mb-4">✅</div>
-                <h2 className="text-xl font-bold mb-2">Order Confirmed!</h2>
-                <div className="p-4 bg-green-50 rounded-2xl text-left text-xs space-y-2 mb-6 border border-green-100">
-                   <p><b>Bill To:</b> {custInfo.name}</p>
-                   <p><b>Total Bill:</b> ₹{cartTotal}</p>
-                   <p className="text-[10px] text-gray-500 italic">Bill copy has been shared on WhatsApp.</p>
+              /* REAL INVOICE BILL LAYOUT DESIGN */
+              <div className="pt-4 space-y-4">
+                <div className="text-center">
+                  <div className="text-4xl mb-1">✅</div>
+                  <h2 className="text-lg font-black text-green-600">ORDER CONFIRMED!</h2>
+                  <p className="text-[10px] text-gray-400 italic">Bill copy has been sent to shop owner</p>
                 </div>
-                <button onClick={() => {setShowInvoice(false); setCart([]); setIsCartOpen(false);}} className="w-full bg-gradient-to-r from-blue-500 to-green-500 text-white py-4 rounded-2xl font-bold shadow-lg">Done</button>
+                
+                {/* Invoice Main Box */}
+                <div className="border-2 border-gray-100 rounded-2xl p-4 bg-gray-50/50 space-y-3 text-[11px] font-medium text-gray-700 shadow-inner">
+                  <div className="border-b pb-2 text-center">
+                    <h3 className="font-black text-sm tracking-wider text-gray-800">DAILY NEEDS HUB</h3>
+                    <p className="text-[9px] text-gray-400">Cash Memo / Retail Invoice</p>
+                  </div>
+                  
+                  <div className="space-y-1 bg-white p-2 rounded-xl border border-gray-100">
+                    <p><b>Customer:</b> {custInfo.name}</p>
+                    <p className="truncate"><b>Address:</b> {custInfo.address}</p>
+                    <p><b>Date:</b> {new Date().toLocaleDateString()}</p>
+                  </div>
+
+                  {/* Bill Items Table */}
+                  <table className="w-full text-left border-collapse bg-white rounded-xl overflow-hidden border border-gray-100">
+                    <thead>
+                      <tr className="bg-gray-100 text-[9px] uppercase font-black text-gray-500">
+                        <th className="p-2">Item</th>
+                        <th className="p-2 text-center">Qty</th>
+                        <th className="p-2 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cart.map(item => (
+                        <tr key={item.id} className="border-b border-gray-50 text-[10px]">
+                          <td className="p-2 truncate max-w-[100px] font-bold text-gray-600">{item.name}</td>
+                          <td className="p-2 text-center text-gray-500">{item.qty}</td>
+                          <td className="p-2 text-right font-bold text-blue-600">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <div className="flex justify-between items-center pt-2 border-t text-sm font-black text-green-600 px-1">
+                    <span>GRAND TOTAL:</span>
+                    <span className="text-base">₹{cartTotal}</span>
+                  </div>
+                </div>
+
+                <button onClick={() => {setShowInvoice(false); setCart([]); setIsCartOpen(false);}} className="w-full bg-gradient-to-r from-blue-600 to-green-500 text-white py-4 rounded-2xl font-bold shadow-md active:scale-95 transition-all text-center">Done & Clear Bag</button>
               </div>
             )}
           </div>

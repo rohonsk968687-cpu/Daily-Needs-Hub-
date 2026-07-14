@@ -28,7 +28,7 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [activeTab, setActiveTab] = useState("shop"); 
+  const [activeTab, setActiveTab] = useState("shop"); // 'shop', 'categories', 'offers', 'orders'
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState("");
@@ -175,7 +175,7 @@ export default function App() {
     }
   });
 
-  const handleOrder = async () => {
+  const handleCheckoutInit = async () => {
     if(!custInfo.name || !custInfo.address) return alert("Naam aur Pata bharna zaruri hai!");
     try {
       const docRef = await addDoc(collection(db, "orders"), {
@@ -188,13 +188,20 @@ export default function App() {
         createdAt: new Date().toLocaleString()
       });
       setCurrentOrderId(docRef.id);
-      const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
-      const msg = `Naya Order - Daily Needs Hub\nOrder ID: ${docRef.id}\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal: ₹${cartTotal}`;
-      window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
-      setShowInvoice(true);
+      setShowInvoice(true); 
     } catch (e) {
       alert("Order create karne mein dikkat aayi.");
     }
+  };
+
+  const sendWhatsAppNotification = () => {
+    const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
+    const msg = `Naya Order & Payment Done - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}\n\nKripya Payment aur order deliver kijiye.`;
+    window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
+    
+    setShowInvoice(false);
+    setCart([]);
+    setIsCartOpen(false);
   };
 
   const getCategoryEmoji = (cat) => {
@@ -480,20 +487,23 @@ export default function App() {
               </div>
             </footer>
 
-            {/* Bottom Menu */}
+            {/* 🌟 5-TAB UPGRADED FIXED BOTTOM NAVIGATION BAR 🌟 */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-xl">
-              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🛒</span><span className="text-[10px]">Shop</span>
               </button>
-              <button onClick={() => setActiveTab("categories")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "categories" ? "text-emerald-600 font-black" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => setActiveTab("categories")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "categories" ? "text-emerald-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🗂️</span><span className="text-[10px]">Category</span>
               </button>
-              <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "offers" ? "text-red-500 font-black" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "offers" ? "text-red-500 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🎁</span><span className="text-[10px]">Offers</span>
               </button>
-              <button onClick={() => setActiveTab("orders")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "orders" ? "text-purple-600 font-black" : "text-gray-400 font-bold"}`}>
+              
+              {/* FIXED DIRECT TRACK NAVIGATION ICON ENTRY */}
+              <button onClick={() => setActiveTab("orders")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "orders" ? "text-purple-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">📦</span><span className="text-[10px]">Track</span>
               </button>
+              
               <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white rounded-2xl px-2.5 py-1 shadow-md">
                 <span className="text-[10px] font-black">🛍️ Bag</span>
                 <span className="text-[9px]">₹{cartTotal}</span>
@@ -503,7 +513,7 @@ export default function App() {
         )}
       </div>
 
-      {/* Cart & Payment System */}
+      {/* Cart Drawer System */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
@@ -522,18 +532,17 @@ export default function App() {
                 ))}
                 <div className="mt-8">
                   <div className="flex justify-between text-2xl font-black mb-6 text-emerald-600"><span>Total:</span><span>₹{cartTotal}</span></div>
-                  <button onClick={handleOrder} className="w-full bg-gradient-to-r from-orange-500 to-emerald-500 text-white py-4 rounded-2xl font-black text-lg mb-2 shadow-lg">WhatsApp Order</button>
+                  <button onClick={handleCheckoutInit} className="w-full bg-gradient-to-r from-orange-500 to-emerald-500 text-white py-4 rounded-2xl font-black text-lg mb-2 shadow-lg">Proceed to Payment</button>
                   <button onClick={() => setIsCartOpen(false)} className="w-full py-2 text-gray-400 text-xs text-center font-bold">CLOSE</button>
                 </div>
               </>
             ) : (
               <div className="pt-2 space-y-4">
                 <div className="text-center">
-                  <div className="text-3xl">✅</div>
-                  <h2 className="text-md font-black text-emerald-600 uppercase">Order Generated!</h2>
+                  <span className="text-3xl">📝</span>
+                  <h2 className="text-md font-black text-orange-600 uppercase">Verify Bill & Pay</h2>
                 </div>
 
-                {/* UPGRADED 100% SECURE DUAL-MODE DEEP-LINK UPI SYSTEM */}
                 <div className="p-4 bg-orange-50/50 border-2 border-dashed border-orange-200 rounded-2xl text-center space-y-3 shadow-inner">
                   <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black">⚡ INSTANT UPI PAYMENT</span>
                   <p className="text-[11px] text-gray-600 font-bold">Scan QR code using Google Pay, PhonePe or Paytm</p>
@@ -546,23 +555,27 @@ export default function App() {
                     />
                   </div>
 
-                  {/* HIGH COMPATIBILITY CROSS-PLATFORM INTENT INTERACTION */}
                   <a 
                     href={`intent://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR#Intent;scheme=upi;package=in.org.npci.upiapp;end`}
                     className="block bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all"
                   >
-                    🚀 Pay directly via Mobile UPI App
+                    🚀 Pay via Mobile UPI App
                   </a>
-                  <p className="text-[9px] text-gray-400 italic">Agar automatic app na khule, toh upar ka QR Scanner use karein</p>
                 </div>
 
-                <div className="border border-gray-100 rounded-2xl p-4 bg-gray-50/30 text-[11px] font-bold text-gray-700">
-                  <p><b>Order Ticket ID:</b> {currentOrderId}</p>
+                <div className="border border-orange-100 rounded-2xl p-4 bg-gray-50/30 text-[11px] font-bold text-gray-700 space-y-2 shadow-sm">
+                  <p className="border-b pb-1 text-center font-black text-gray-800 text-xs uppercase">Retail Cash Memo</p>
+                  <p><b>Order ID:</b> {currentOrderId}</p>
                   <p><b>Grahak:</b> {custInfo.name}</p>
-                  <p><b>Pay Amount:</b> ₹{cartTotal}</p>
+                  <p className="border-t pt-1 flex justify-between text-orange-600 font-black text-xs"><span>Total Amount:</span><span>₹{cartTotal}</span></p>
                 </div>
 
-                <button onClick={() => {setShowInvoice(false); setCart([]); setIsCartOpen(false);}} className="w-full bg-emerald-600 text-white py-3.5 rounded-2xl font-black shadow-md">Done & Clear Bag</button>
+                <button 
+                  onClick={sendWhatsAppNotification} 
+                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-4 rounded-2xl font-black shadow-md text-sm text-center tracking-wide uppercase"
+                >
+                  ✅ Send Order Details to WhatsApp
+                </button>
               </div>
             )}
           </div>
@@ -571,4 +584,3 @@ export default function App() {
     </div>
   );
 }
-

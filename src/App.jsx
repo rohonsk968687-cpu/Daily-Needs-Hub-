@@ -13,12 +13,12 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack"];
-
-// Ab external link nahi, balki GitHub ka local file use hoga!
 const BRAND_LOGO_URL = "/logo.png"; 
+const MY_UPI_ID = "8637589429@ybl"; // Aapka UPI Address
 
 export default function App() {
   const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]); // Live Orders State
   const [cart, setCart] = useState([]);
   const [wishlist, setWishlist] = useState([]);
   const [user, setUser] = useState(null);
@@ -26,9 +26,10 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [activeTab, setActiveTab] = useState("shop");
+  const [activeTab, setActiveTab] = useState("shop"); // 'shop', 'categories', 'offers', 'orders'
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState("");
   const [darkMode, setDarkMode] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [custInfo, setCustInfo] = useState({ name: '', address: '' });
@@ -59,12 +60,19 @@ export default function App() {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
     }, 4000);
     
-    const q = query(collection(db, "products"), orderBy("name"));
-    const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+    // Listen to Products
+    const qProd = query(collection(db, "products"), orderBy("name"));
+    const unsubProd = onSnapshot(qProd, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => { clearInterval(timer); unsubscribeSnapshot(); unsubscribeAuth(); };
+    // Listen to Orders live from database
+    const qOrder = collection(db, "orders");
+    const unsubOrder = onSnapshot(qOrder, (snapshot) => {
+      setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => { clearInterval(timer); unsubProd(); unsubOrder(); unsubscribeAuth(); };
   }, [slides.length]);
 
   const handleGoogleLogin = async () => {
@@ -141,6 +149,11 @@ export default function App() {
     await updateDoc(doc(db, "products", id), { [field]: finalVal });
   };
 
+  const updateOrderStatus = async (id, nextStatus) => {
+    await updateDoc(doc(db, "orders", id), { status: nextStatus });
+    alert("Order status updated successfully!");
+  };
+
   const updateSlideUrl = (index, url) => {
     const updated = [...slides];
     updated[index].img = url;
@@ -162,12 +175,31 @@ export default function App() {
     }
   });
 
-  const handleOrder = () => {
+  const handleOrder = async () => {
     if(!custInfo.name || !custInfo.address) return alert("Naam aur Pata bharna zaruri hai!");
-    const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
-    const msg = `Naya Order - Daily Needs Hub\n\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal: ₹${cartTotal}`;
-    window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
-    setShowInvoice(true);
+    
+    // Create live order entry inside Firestore
+    try {
+      const docRef = await addDoc(collection(db, "orders"), {
+        customerName: custInfo.name,
+        address: custInfo.address,
+        userEmail: user ? user.email : "Anonymous",
+        items: cart.map(i => ({ name: i.name, qty: i.qty, total: getDiscountedPrice(i.price, i.discount) * i.qty })),
+        totalAmount: cartTotal,
+        status: "Pending ⏳",
+        createdAt: new Date().toLocaleString()
+      });
+
+      setCurrentOrderId(docRef.id);
+      
+      const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
+      const msg = `Naya Order - Daily Needs Hub\nOrder ID: ${docRef.id}\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal: ₹${cartTotal}\n\nKripya verification kijiye.`;
+      
+      window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
+      setShowInvoice(true);
+    } catch (e) {
+      alert("Order create karne mein dikkat aayi.");
+    }
   };
 
   const getCategoryEmoji = (cat) => {
@@ -196,7 +228,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-amber-50/60 via-white to-emerald-50/60 text-gray-900'} pb-32 transition-all duration-500 font-sans`}>
       
-      {/* Premium Header with Dynamic Brand Logo */}
+      {/* Header */}
       <header className="p-3 bg-white/95 backdrop-blur-md shadow-md sticky top-0 z-40 flex justify-between items-center border-b border-orange-100">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <img src={BRAND_LOGO_URL} alt="Daily Needs Hub Logo" className="w-12 h-12 object-contain rounded-xl shadow-sm bg-orange-50 p-0.5 border border-orange-100" />
@@ -218,30 +250,56 @@ export default function App() {
       </header>
 
       <div className="max-w-md mx-auto">
-        {/* Colourful Search Bar Accent */}
-        <div className="p-4">
-          <input 
-            type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks..." 
-            className="w-full p-4 bg-white/95 rounded-2xl border-2 border-orange-200 text-sm focus:border-emerald-500 focus:outline-none shadow-md transition-all text-black font-medium placeholder-gray-400"
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+        {/* Search Bar */}
+        {activeTab === "shop" && (
+          <div className="p-4">
+            <input 
+              type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks..." 
+              className="w-full p-4 bg-white/95 rounded-2xl border-2 border-orange-200 text-sm focus:border-emerald-500 focus:outline-none shadow-md transition-all text-black font-medium"
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        )}
 
         {window.location.pathname === '/admin' ? (
-          /* Full Power Admin Dashboard Controls */
+          /* Full Power Admin View */
           <div className="p-4">
             <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
-               <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Control Room</h2>
+               <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Dashboard</h2>
                {!isAdmin ? (
                  <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'admin123' && setIsAdmin(true)} />
                ) : (
                  <>
+                    {/* Live Tracking Order Control Room */}
+                    <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 space-y-3">
+                      <h3 className="text-xs font-black text-blue-800">📦 CUSTOMER ORDERS INCOMING DASHBOARD ({orders.length})</h3>
+                      {orders.map(ord => (
+                        <div key={ord.id} className="p-3 bg-white rounded-xl text-xs space-y-1 shadow-sm border">
+                          <p><b>Customer:</b> {ord.customerName}</p>
+                          <p><b>Total Bill:</b> ₹{ord.totalAmount}</p>
+                          <p><b>Time:</b> {ord.createdAt}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="font-bold text-[10px] text-orange-600">Status: {ord.status}</span>
+                            <select 
+                              className="p-1 border rounded text-[10px] bg-gray-50 font-bold"
+                              onChange={(e) => updateOrderStatus(ord.id, e.target.value)}
+                              defaultValue={ord.status}
+                            >
+                              <option value="Pending ⏳">Pending ⏳</option>
+                              <option value="Packed 📦">Packed 📦</option>
+                              <option value="Out for Delivery 🚚">Out for Delivery 🚚</option>
+                              <option value="Delivered ✅">Delivered ✅</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
                     {/* Banners Manager */}
                     <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 space-y-3">
                       <h3 className="text-xs font-bold text-orange-700">⚙️ Manage 5 Dynamic Banners</h3>
                       {slides.map((s, index) => (
                         <div key={s.id} className="space-y-1">
-                          <label className="text-[10px] font-bold text-gray-500">Banner Slider {s.id} Link:</label>
                           <input type="text" className="w-full p-2 text-xs border rounded-lg bg-white" defaultValue={s.img} onBlur={(e) => updateSlideUrl(index, e.target.value)} />
                         </div>
                       ))}
@@ -254,38 +312,26 @@ export default function App() {
                         <input name="itemDiscount" type="number" placeholder="Disc %" className="border p-3 rounded-xl bg-gray-50" />
                         <input name="itemStock" type="number" placeholder="Stock" className="border p-3 rounded-xl bg-gray-50" required />
                       </div>
-                      
-                      <div className="flex gap-4 p-2 bg-gray-50 rounded-xl border border-dashed text-xs font-bold text-gray-600 justify-between items-center">
+                      <div className="flex justify-between items-center text-xs font-bold p-2 bg-gray-50 rounded-xl">
                         <label><input type="checkbox" name="bestSeller" /> ✨ Best</label>
                         <label><input type="checkbox" name="newArrival" /> 🚀 New</label>
-                        <div>
-                          <select name="itemOfferTag" className="p-1 border rounded text-[10px]">
-                            {offerTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
-                          </select>
-                        </div>
+                        <select name="itemOfferTag" className="p-1 border rounded text-[10px]">
+                          {offerTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+                        </select>
                       </div>
-
                       <input name="itemImg" placeholder="Image Link / Emoji" className="border p-3 rounded-xl bg-gray-50" required />
                       <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50">
                         {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
-                      <button type="submit" className="bg-orange-600 text-white p-4 rounded-xl font-bold shadow-lg">ADD ITEM LIVE</button>
+                      <button type="submit" className="bg-orange-600 text-white p-4 rounded-xl font-bold">ADD ITEM LIVE</button>
                     </form>
 
-                    {/* Inventory Price and Matrix Management Controls */}
+                    {/* Matrix Management Controls */}
                     <div className="space-y-2 pt-4 border-t">
-                      <h3 className="font-bold text-sm text-gray-700">Live Inventory Manager Matrix</h3>
                       {products.map(p => (
-                        <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-bold text-gray-800">{p.name}</span>
-                            <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500 text-xs font-black">🗑 Delete</button>
-                          </div>
-                          <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500">
-                            <div>Stock: <input type="number" className="w-12 p-1 border rounded text-black font-bold" defaultValue={p.stock} onBlur={(e) => updateProductData(p.id, "stock", e.target.value)} /></div>
-                            <div>Price: ₹<input type="number" className="w-12 p-1 border rounded text-black font-bold" defaultValue={p.price} onBlur={(e) => updateProductData(p.id, "price", e.target.value)} /></div>
-                            <div>Disc%: <input type="number" className="w-10 p-1 border rounded text-black font-bold" defaultValue={p.discount || 0} onBlur={(e) => updateProductData(p.id, "discount", e.target.value)} /></div>
-                          </div>
+                        <div key={p.id} className="p-3 bg-gray-50 rounded-xl flex justify-between items-center text-xs">
+                          <span className="font-bold">{p.name}</span>
+                          <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500 font-black">🗑 Delete</button>
                         </div>
                       ))}
                     </div>
@@ -294,35 +340,28 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Customer UI Layout */
+          /* Customer View */
           <>
             {activeTab === "shop" && (
               <>
                 <div className="px-4 mb-4">
                   <div className="bg-gradient-to-r from-orange-500 via-emerald-500 to-blue-600 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
-                    <div className="relative z-10">
-                      <h2 className="text-2xl font-black mb-1 tracking-wide">Aapki Apni Dukan! 🛒</h2>
-                      <p className="text-xs opacity-90 font-medium italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
-                    </div>
+                    <h2 className="text-2xl font-black mb-1">Aapki Apni Dukan! 🛒</h2>
+                    <p className="text-xs opacity-90 italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
                   </div>
                 </div>
 
-                {/* 5-Poster High Contrast Slider */}
+                {/* Slider */}
                 <div className="px-4 mb-4">
                   <div className="relative h-44 w-full overflow-hidden rounded-3xl shadow-xl border-2 border-white bg-gray-100">
                     {slides.map((s, idx) => (
                       <div key={s.id} className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
                         <img src={s.img} alt="Promo banner" className="w-full h-full object-cover" />
                         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-3 text-white">
-                          <p className="text-xs font-black tracking-wide bg-orange-600/80 px-2 py-0.5 rounded-md inline-block">{s.text}</p>
+                          <p className="text-xs font-black bg-orange-600/80 px-2 py-0.5 rounded-md inline-block">{s.text}</p>
                         </div>
                       </div>
                     ))}
-                    <div className="absolute top-3 right-3 z-20 flex gap-1 bg-black/30 p-1 rounded-full">
-                      {slides.map((_, idx) => (
-                        <div key={idx} className={`w-1.5 h-1.5 rounded-full transition-all ${idx === currentSlide ? 'bg-orange-500 w-3' : 'bg-white/70'}`} />
-                      ))}
-                    </div>
                   </div>
                 </div>
               </>
@@ -332,17 +371,12 @@ export default function App() {
               <div className="px-4 mb-4">
                 <div className="bg-gradient-to-r from-emerald-600 to-teal-500 p-5 rounded-3xl text-white mb-6 shadow-md">
                   <h2 className="text-xl font-black">All Categories</h2>
-                  <p className="text-xs opacity-80">Apni zarurat ke hisab se saaman chunein</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {categories.map(c => (
-                    <button 
-                      key={c} 
-                      onClick={() => { setActiveCategory(c); setActiveTab("shop"); }}
-                      className={`p-6 rounded-2xl bg-white text-left shadow-md border-2 font-black flex flex-col justify-between h-28 transform active:scale-95 transition-all ${activeCategory === c ? 'border-orange-500 bg-orange-50/40 text-orange-600' : 'border-gray-100 text-gray-700'}`}
-                    >
+                    <button key={c} onClick={() => { setActiveCategory(c); setActiveTab("shop"); }} className={`p-6 rounded-2xl bg-white text-left shadow-md border-2 font-black flex flex-col justify-between h-28 ${activeCategory === c ? 'border-orange-500 text-orange-600' : 'border-gray-100 text-gray-700'}`}>
                       <span className="text-3xl">{getCategoryEmoji(c)}</span>
-                      <span className="text-sm tracking-tight">{c}</span>
+                      <span className="text-sm">{c}</span>
                     </button>
                   ))}
                 </div>
@@ -353,54 +387,79 @@ export default function App() {
               <div className="px-4 mb-2">
                 <div className="bg-gradient-to-br from-red-500 via-pink-500 to-orange-500 p-6 rounded-3xl text-white shadow-xl mb-4">
                   <h2 className="text-2xl font-black mb-1">⚡ SPECIAL OFFERS ZONE</h2>
-                  <p className="text-xs opacity-90">Bumper deals aur combos sirf aapke liye!</p>
                 </div>
                 <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
                   {["All", "Today's Deal", "Buy 2 Get 1", "Combo Pack"].map(tag => (
-                    <button key={tag} onClick={() => setSelectedOfferFilter(tag)} className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap border-2 ${selectedOfferFilter === tag ? 'bg-red-500 text-white border-red-600 shadow-md' : 'bg-white text-gray-500 border-gray-100'}`}>{tag}</button>
+                    <button key={tag} onClick={() => setSelectedOfferFilter(tag)} className={`px-4 py-2 rounded-full text-xs font-bold border-2 ${selectedOfferFilter === tag ? 'bg-red-500 text-white' : 'bg-white text-gray-500'}`}>{tag}</button>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Colourful Dynamic Products Grid Layout */}
-            {activeTab !== "categories" && (
+            {/* LIVE TRACKING TAB FOR CLIENTS */}
+            {activeTab === "orders" && (
+              <div className="px-4">
+                <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-5 rounded-3xl text-white mb-4 shadow-md">
+                  <h2 className="text-xl font-black">📦 Live Order Tracker</h2>
+                  <p className="text-xs opacity-80">Apne order ka real-time live status check karein</p>
+                </div>
+                <div className="space-y-3">
+                  {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
+                    <p className="text-center font-bold text-gray-400 py-6">Abhi tak koi order history nahi mili.</p>
+                  ) : (
+                    orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
+                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2">
+                        <div className="flex justify-between text-xs font-black">
+                          <span className="text-gray-500">ID: ...{o.id.slice(-6)}</span>
+                          <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{o.status}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 font-bold">
+                          {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t text-xs font-black">
+                          <span>Grand Total:</span>
+                          <span className="text-orange-600">₹{o.totalAmount}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Products Grid Layout */}
+            {activeTab !== "categories" && activeTab !== "orders" && (
               <main className="p-4 grid grid-cols-2 gap-4">
                 {filtered.map(p => {
                   const hasDiscount = p.discount > 0;
                   const finalPrice = getDiscountedPrice(p.price, p.discount);
                   const cartItem = cart.find(x => x.id === p.id);
                   return (
-                    <div key={p.id} className="bg-white p-3 rounded-[2rem] shadow-md border-2 border-orange-100/60 hover:border-emerald-200 relative flex flex-col justify-between transition-all">
+                    <div key={p.id} className="bg-white p-3 rounded-[2rem] shadow-md border-2 border-orange-100/60 relative flex flex-col justify-between">
                        <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
-                          {p.offerTag && p.offerTag !== "None" && <span className="bg-emerald-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded shadow-sm text-center uppercase tracking-wider">{p.offerTag}</span>}
-                          {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md text-center shadow-sm">{p.discount}% OFF</span>}
+                          {p.offerTag && p.offerTag !== "None" && <span className="bg-emerald-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{p.offerTag}</span>}
+                          {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">{p.discount}% OFF</span>}
                        </div>
-                       <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden border border-gray-50">
+                       <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden">
                          {p.img.includes('http') ? <img src={p.img} alt="product" className="h-full w-full object-cover rounded-2xl" /> : <span className="text-5xl">{p.img}</span>}
                        </div>
                        <div className="px-1 text-center">
                          <h3 className="font-extrabold text-gray-800 text-sm truncate">{p.name}</h3>
-                         
-                         {/* RESTORED STRIKE-THROUGH ORIGINAL AMOUNT DISPLAY */}
                          <div className="flex items-center justify-center gap-2 mt-1">
                            <span className="text-lg font-black text-orange-600">₹{finalPrice}</span>
-                           {hasDiscount && (
-                             <span className="text-xs text-gray-400 line-through font-bold">₹{p.price}</span>
-                           )}
+                           {hasDiscount && <span className="text-xs text-gray-400 line-through font-bold">₹{p.price}</span>}
                          </div>
-
                          <div className="mt-2.5">
                            {p.stock <= 0 ? (
                              <button disabled className="w-full py-2 bg-gray-200 text-gray-400 rounded-xl text-xs font-bold">OUT</button>
                            ) : cartItem ? (
-                             <div className="flex items-center justify-between bg-gradient-to-r from-orange-500 to-emerald-500 rounded-xl text-white p-1 font-black shadow-inner">
-                               <button onClick={() => removeFromCart(p)} className="px-2 text-sm active:scale-75 transition-all">-</button>
+                             <div className="flex items-center justify-between bg-gradient-to-r from-orange-500 to-emerald-500 rounded-xl text-white p-1 font-black">
+                               <button onClick={() => removeFromCart(p)} className="px-2 text-sm">-</button>
                                <span className="text-xs">{cartItem.qty}</span>
-                               <button onClick={() => addToCart(p)} className="px-2 text-sm active:scale-75 transition-all">+</button>
+                               <button onClick={() => addToCart(p)} className="px-2 text-sm">+</button>
                              </div>
                            ) : (
-                             <button onClick={() => addToCart(p)} className="w-full py-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white font-black rounded-xl text-xs shadow-sm active:scale-95 transition-all">ADD TO BAG</button>
+                             <button onClick={() => addToCart(p)} className="w-full py-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white font-black rounded-xl text-xs">ADD TO BAG</button>
                            )}
                          </div>
                        </div>
@@ -410,87 +469,58 @@ export default function App() {
               </main>
             )}
 
-            {/* Professional Open Layout Footer Section (No Boxes, Clean Typo) */}
+            {/* Footer */}
             <footer className="mx-4 my-8 pt-6 text-gray-800 space-y-6 mb-28 border-t border-gray-200/60">
-              
-              {/* Logo & Headline */}
               <div className="flex items-center gap-3">
-                <img src={BRAND_LOGO_URL} alt="Daily Needs Hub Footer Logo" className="w-10 h-10 object-contain rounded-lg shadow-sm" />
+                <img src={BRAND_LOGO_URL} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
                 <div>
-                  <h3 className="text-base font-black tracking-tight text-gray-800 uppercase font-sans">Daily Needs Hub</h3>
+                  <h3 className="text-base font-black uppercase">Daily Needs Hub</h3>
                   <p className="text-[9px] text-gray-400 font-bold tracking-widest uppercase">Everyday Needs, Delivered Fast</p>
                 </div>
               </div>
-              
-              {/* Follow Us Section with Authentic Vector SVGs */}
               <div className="space-y-2">
                 <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Follow With Us</p>
                 <div className="flex gap-4">
-                  <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-blue-600 transition-colors">
-                    <svg className="w-4 h-4 text-[#1877F2]" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                    Facebook
-                  </a>
-                  <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-pink-600 transition-colors">
-                    <svg className="w-4 h-4 text-[#E4405F]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-                    Instagram
-                  </a>
-                  <a href="https://youtube.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-red-600 transition-colors">
-                    <svg className="w-4 h-4 text-[#FF0000]" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                    YouTube
-                  </a>
+                  <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-blue-600">Facebook</a>
+                  <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-pink-600">Instagram</a>
+                  <a href="https://youtube.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-red-600">YouTube</a>
                 </div>
               </div>
-
-              {/* Contact Us Clean Typography Section */}
-              <div className="space-y-1.5 font-sans">
-                <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Contact Us</p>
+              <div className="space-y-1.5">
                 <div className="text-xs font-bold text-gray-600 space-y-1">
-                  <p className="flex items-center gap-1">📞 Mobile: <a href="tel:+918637589429" className="text-emerald-600 underline font-extrabold">+91 8637589429</a></p>
-                  <p className="flex items-center gap-1">✉️ Email: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline font-extrabold">dailyneedshub@gmail.com</a></p>
+                  <p>📞 Mobile: <a href="tel:+918637589429" className="text-emerald-600 underline">+91 8637589429</a></p>
+                  <p>✉️ Email: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline">dailyneedshub@gmail.com</a></p>
                 </div>
               </div>
-
-              {/* Clean Interactive Privacy Policy Text */}
-              <div className="space-y-1">
-                <button onClick={() => setShowPrivacy(!showPrivacy)} className="text-xs font-extrabold text-blue-600 flex items-center justify-between w-full focus:outline-none">
-                  <span>📄 Legal & Privacy Policy</span>
-                  <span className="text-[9px]">{showPrivacy ? '▲' : '▼'}</span>
-                </button>
-                {showPrivacy && (
-                  <div className="mt-1 p-3 bg-gray-50 rounded-xl text-[10px] text-gray-500 font-bold leading-relaxed space-y-1 border-l-2 border-orange-400">
-                    <p><b>1. Data Privacy:</b> Customer data safely stored for quick dynamic order checks via WhatsApp API.</p>
-                    <p><b>2. Returns Policy:</b> 24-hour return window applicable with the provided store cash memo retail invoice.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Strict Premium Landmark Address Footer Line */}
-              <div className="text-xs font-extrabold text-gray-500 leading-relaxed pt-2 border-t border-gray-100">
+              <div className="text-xs font-extrabold text-gray-500 pt-2 border-t">
                 📍 Bolpur to Palitpur Road, Near Al Ameen Mission, Papuri, Nanoor, Birbhum, West Bengal, 731240
               </div>
             </footer>
 
-            {/* Sticky Bottom Nav Component */}
+            {/* Sticky Bottom Nav component upgraded to 5 Tab items */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-xl">
-              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🛒</span><span className="text-[10px]">Shop</span>
               </button>
-              <button onClick={() => setActiveTab("categories")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "categories" ? "text-emerald-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => setActiveTab("categories")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "categories" ? "text-emerald-600 font-black" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🗂️</span><span className="text-[10px]">Category</span>
               </button>
-              <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "offers" ? "text-red-500 font-black scale-105" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "offers" ? "text-red-500 font-black" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🎁</span><span className="text-[10px]">Offers</span>
               </button>
-              <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white rounded-2xl px-3 py-1 shadow-md">
-                <span className="text-xs font-black">🛍️ Basket</span>
-                <span className="text-[10px]">₹{cartTotal}</span>
+              <button onClick={() => setActiveTab("orders")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "orders" ? "text-purple-600 font-black" : "text-gray-400 font-bold"}`}>
+                <span className="text-lg">📦</span><span className="text-[10px]">Track</span>
+              </button>
+              <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white rounded-2xl px-2.5 py-1 shadow-md">
+                <span className="text-[10px] font-black">🛍️ Bag</span>
+                <span className="text-[9px]">₹{cartTotal}</span>
               </button>
             </div>
           </>
         )}
       </div>
 
-      {/* Cart Drawer Component */}
+      {/* UPI QR Payment Modal & Cart Drawer System */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
@@ -514,15 +544,43 @@ export default function App() {
                 </div>
               </>
             ) : (
-              <div className="pt-4 space-y-4">
+              /* DYNAMIC DUAL PAYMENT INVOICE BILL & UPI QR SYSTEM */
+              <div className="pt-2 space-y-4">
                 <div className="text-center">
-                  <h2 className="text-lg font-black text-emerald-600">ORDER CONFIRMED!</h2>
+                  <div className="text-3xl">✅</div>
+                  <h2 className="text-md font-black text-emerald-600 uppercase">Order Generated!</h2>
                 </div>
-                <div className="border-2 border-gray-100 rounded-2xl p-4 bg-gray-50/50 space-y-3 text-[11px] font-bold">
-                  <p><b>Customer:</b> {custInfo.name}</p>
-                  <p><b>Total Bill:</b> ₹{cartTotal}</p>
+
+                {/* Instant Live Google Pay / PhonePe UPI QR Generation Panel */}
+                <div className="p-4 bg-orange-50/50 border-2 border-dashed border-orange-200 rounded-2xl text-center space-y-3 shadow-inner">
+                  <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black">⚡ INSTANT UPI PAYMENT</span>
+                  <p className="text-[11px] text-gray-600 font-bold">Scan QR code using Google Pay, PhonePe or Paytm</p>
+                  
+                  {/* Automated Standard QR API Engine */}
+                  <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
+                      alt="UPI QR Payment Link" 
+                      className="w-36 h-36 mx-auto object-contain" 
+                    />
+                  </div>
+
+                  <a 
+                    href={`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`}
+                    className="block bg-blue-600 text-white p-2.5 rounded-xl text-xs font-black shadow active:scale-95 transition-all"
+                  >
+                    🚀 Pay directly via Mobile UPI App
+                  </a>
                 </div>
-                <button onClick={() => {setShowInvoice(false); setCart([]); setIsCartOpen(false);}} className="w-full bg-orange-600 text-white py-4 rounded-2xl font-black shadow-md">Done</button>
+
+                <div className="border border-gray-100 rounded-2xl p-4 bg-gray-50/30 text-[11px] font-bold text-gray-700">
+                  <p><b>Order Ticket ID:</b> {currentOrderId}</p>
+                  <p><b>Grahak:</b> {custInfo.name}</p>
+                  <p><b>Pay Amount:</b> ₹{cartTotal}</p>
+                  <p className="text-[9px] text-gray-400 mt-1 italic">Order live status available inside the Track Tab</p>
+                </div>
+
+                <button onClick={() => {setShowInvoice(false); setCart([]); setIsCartOpen(false);}} className="w-full bg-emerald-600 text-white py-3.5 rounded-2xl font-black shadow-md">Done & Clear Bag</button>
               </div>
             )}
           </div>
@@ -531,3 +589,4 @@ export default function App() {
     </div>
   );
 }
+

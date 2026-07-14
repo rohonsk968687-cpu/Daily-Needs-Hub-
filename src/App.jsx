@@ -14,8 +14,8 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack"];
 
-// Aapka Naya Brand Logo Image URL
-const BRAND_LOGO_URL = "https://i.ibb.co/VpyMcyP6/1000118507.png"; 
+// Ab external link nahi, balki GitHub ka local file use hoga!
+const BRAND_LOGO_URL = "/logo.png"; 
 
 export default function App() {
   const [products, setProducts] = useState([]);

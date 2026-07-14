@@ -9,7 +9,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
-// Google Provider Custom Parameters for forcing account selection
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
@@ -24,7 +23,7 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [activeTab, setActiveTab] = useState("shop");
+  const [activeTab, setActiveTab] = useState("shop"); // 'shop', 'categories', 'offers'
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -38,14 +37,12 @@ export default function App() {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   useEffect(() => {
-    // Auth Observer: Check if user is logged in
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
         setUser(currentUser);
         setCustInfo(prev => ({ ...prev, name: currentUser.displayName || '' }));
       } else {
         setUser(null);
-        // Fallback to anonymous if no user is signed in (for security rules)
         if (!currentUser) {
           signInAnonymously(auth).catch(e => console.log("Anon auth bypass"));
         }
@@ -64,10 +61,8 @@ export default function App() {
     return () => { clearInterval(timer); unsubscribeSnapshot(); unsubscribeAuth(); };
   }, [slides.length]);
 
-  // FIXED GOOGLE LOGIN FUNCTION
   const handleGoogleLogin = async () => {
     try {
-      console.log("Starting Google Login...");
       const result = await signInWithPopup(auth, googleProvider);
       if(result.user) {
         setUser(result.user);
@@ -75,19 +70,14 @@ export default function App() {
         alert(`Swagat hai bhai, ${result.user.displayName}! 🎉`);
       }
     } catch (error) {
-      console.error("Login Error Detailed:", error);
       alert("Login Error: " + error.message);
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setUser(null);
-      alert("Logged out successfully!");
-    } catch (error) {
-      console.error(error);
-    }
+    await signOut(auth);
+    setUser(null);
+    alert("Logged out!");
   };
 
   const getDiscountedPrice = (price, discount) => {
@@ -116,10 +106,6 @@ export default function App() {
     }
   };
 
-  const toggleWishlist = (p) => {
-    setWishlist(wishlist.find(x => x.id === p.id) ? wishlist.filter(x => x.id !== p.id) : [...wishlist, p]);
-  };
-
   const addProduct = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
@@ -140,14 +126,6 @@ export default function App() {
     } catch (error) {
       alert("Database error!");
     }
-  };
-
-  const updateProductData = async (id, field, value) => {
-    let finalVal = value;
-    if (field === "stock" || field === "price" || field === "discount") {
-      finalVal = Number(value);
-    }
-    await updateDoc(doc(db, "products", id), { [field]: finalVal });
   };
 
   const updateSlideUrl = (index, url) => {
@@ -179,37 +157,35 @@ export default function App() {
     setShowInvoice(true);
   };
 
-  const getCategoryColor = (cat) => {
-    if (activeCategory !== cat) return 'bg-white text-gray-400 border border-gray-100';
+  const getCategoryEmoji = (cat) => {
     switch(cat) {
-      case 'All': return 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white shadow-lg';
-      case 'Dairy': return 'bg-gradient-to-r from-blue-500 to-teal-400 text-white shadow-lg';
-      case 'Beverages': return 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg';
-      case 'Snacks': return 'bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg';
-      case 'Vegetables': return 'bg-gradient-to-r from-green-500 to-emerald-400 text-white shadow-lg';
-      default: return 'bg-gradient-to-r from-gray-600 to-gray-700 text-white shadow-lg';
+      case 'All': return '🛍️';
+      case 'Dairy': return '🥛';
+      case 'Beverages': return '🥤';
+      case 'Snacks': return '🍿';
+      case 'Vegetables': return '🥬';
+      default: return '📦';
     }
   };
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-blue-50 via-white to-green-50 text-gray-900'} pb-32 transition-all duration-500`}>
       
-      {/* Header */}
-      <header className="p-4 bg-white/80 backdrop-blur-md shadow-md sticky top-0 z-40 flex justify-between items-center border-b border-blue-50">
-        <div>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-green-500 to-orange-500 tracking-tighter italic">DAILY NEEDS HUB</h1>
-          {user && <p className="text-[10px] font-bold text-green-600">👤 {user.displayName}</p>}
+      {/* Fixed Full Line Header */}
+      <header className="p-4 bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-40 flex justify-between items-center border-b border-gray-100">
+        <div className="flex flex-col items-start min-w-0 flex-1 pr-2">
+          <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-green-600 to-orange-500 tracking-tight italic truncate w-full uppercase">
+            DAILY NEEDS HUB
+          </h1>
+          {user && <p className="text-[10px] font-bold text-green-600 truncate max-w-[150px]">👤 {user.displayName}</p>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
            <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs">{darkMode ? '☀️' : '🌙'}</button>
            {user ? (
              <button onClick={handleLogout} className="text-[10px] bg-red-50 text-red-500 p-2 font-black rounded-xl">Logout</button>
            ) : (
              <button onClick={handleGoogleLogin} className="text-[10px] bg-blue-50 text-blue-600 p-2 font-black rounded-xl border border-blue-100 shadow-sm active:scale-95 transition-all">👤 Login</button>
            )}
-           <button onClick={() => setIsCartOpen(true)} className="bg-gradient-to-r from-green-500 to-blue-600 text-white px-4 py-2 rounded-full font-bold text-sm shadow-md active:scale-95 transition-all">
-             🛒 ₹{cartTotal}
-           </button>
         </div>
       </header>
 
@@ -218,7 +194,7 @@ export default function App() {
         <div className="p-4">
           <input 
             type="text" placeholder="🔍 Search (Milk, Soap, Kitkat...)" 
-            className="w-full p-4 bg-white/90 rounded-2xl border-2 border-green-100 text-sm focus:border-blue-400 focus:outline-none shadow-sm transition-all"
+            className="w-full p-4 bg-white/90 rounded-2xl border-2 border-green-50 text-sm focus:border-blue-400 focus:outline-none shadow-sm transition-all text-black"
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
@@ -226,7 +202,7 @@ export default function App() {
         {window.location.pathname === '/admin' ? (
           /* Admin View */
           <div className="p-4">
-            <div className="bg-white p-6 rounded-3xl shadow-xl border border-blue-50 text-black space-y-6">
+            <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6">
                <h2 className="text-xl font-bold mb-4 text-blue-600">Admin Dashboard</h2>
                {!isAdmin ? (
                  <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'admin123' && setIsAdmin(true)} />
@@ -284,6 +260,7 @@ export default function App() {
         ) : (
           /* Customer View */
           <>
+            {/* Tab 1: Shop View (Banners + Filtered Products) */}
             {activeTab === "shop" && (
               <>
                 <div className="px-4 mb-4">
@@ -307,15 +284,32 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-
-                <div className="flex gap-2 p-4 overflow-x-auto no-scrollbar">
-                  {categories.map(c => (
-                    <button key={c} onClick={() => setActiveCategory(c)} className={`px-5 py-2 rounded-full text-xs font-extrabold whitespace-nowrap transition-all duration-300 ${getCategoryColor(c)}`}>{c}</button>
-                  ))}
-                </div>
               </>
             )}
 
+            {/* Tab 2: Categories Grid Page */}
+            {activeTab === "categories" && (
+              <div className="px-4 mb-4">
+                <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-5 rounded-3xl text-white mb-6 shadow-md">
+                  <h2 className="text-xl font-black">All Categories</h2>
+                  <p className="text-xs opacity-80">Apni zarurat ke hisab se saaman chunein</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {categories.map(c => (
+                    <button 
+                      key={c} 
+                      onClick={() => { setActiveCategory(c); setActiveTab("shop"); }}
+                      className={`p-6 rounded-2xl bg-white text-left shadow-sm border font-black transition-all active:scale-95 flex flex-col justify-between h-28 ${activeCategory === c ? 'border-blue-500 ring-2 ring-blue-100 text-blue-600' : 'border-gray-100 text-gray-700'}`}
+                    >
+                      <span className="text-3xl">{getCategoryEmoji(c)}</span>
+                      <span className="text-sm">{c}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Special Offers Page */}
             {activeTab === "offers" && (
               <div className="px-4 mb-2">
                 <div className="bg-gradient-to-br from-red-500 via-pink-500 to-orange-500 p-6 rounded-3xl text-white shadow-xl mb-4">
@@ -330,61 +324,86 @@ export default function App() {
               </div>
             )}
 
-            <main className="p-4 grid grid-cols-2 gap-4">
-              {filtered.length === 0 ? (
-                <div className="col-span-2 text-center py-10 text-gray-400 font-bold bg-white/50 rounded-2xl border">Yahan abhi koi saaman nahi mila.</div>
-              ) : (
-                filtered.map(p => {
-                  const hasDiscount = p.discount > 0;
-                  const finalPrice = getDiscountedPrice(p.price, p.discount);
-                  const cartItem = cart.find(x => x.id === p.id);
-                  
-                  return (
-                    <div key={p.id} className="bg-white/90 backdrop-blur-sm p-3 rounded-[2rem] shadow-sm border border-white relative">
-                       <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 max-w-[80px]">
-                          {p.offerTag && p.offerTag !== "None" && <span className="bg-orange-500 text-white text-[7px] font-black px-1 py-0.5 rounded uppercase">{p.offerTag}</span>}
-                          {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md text-center">{p.discount}% OFF</span>}
-                       </div>
-
-                       <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-blue-50 via-white to-green-50 rounded-2xl overflow-hidden">
-                         {p.img.includes('http') ? <img src={p.img} alt="product" className="h-full w-full object-cover rounded-2xl" /> : <span className="text-5xl">{p.img}</span>}
-                       </div>
-                       <div className="px-1 text-center">
-                         <h3 className="font-bold text-gray-700 text-sm truncate">{p.name}</h3>
-                         <div className="flex items-center justify-center gap-2 mt-1">
-                           <span className="text-lg font-black text-blue-600">₹{finalPrice}</span>
+            {/* Products Grid (Shop aur Offers dono tabs ke liye data yahan se chalega) */}
+            {activeTab !== "categories" && (
+              <main className="p-4 grid grid-cols-2 gap-4">
+                {filtered.length === 0 ? (
+                  <div className="col-span-2 text-center py-10 text-gray-400 font-bold bg-white/50 rounded-2xl border">Yahan abhi koi saaman nahi mila.</div>
+                ) : (
+                  filtered.map(p => {
+                    const hasDiscount = p.discount > 0;
+                    const finalPrice = getDiscountedPrice(p.price, p.discount);
+                    const cartItem = cart.find(x => x.id === p.id);
+                    
+                    return (
+                      <div key={p.id} className="bg-white/90 backdrop-blur-sm p-3 rounded-[2rem] shadow-sm border border-white relative flex flex-col justify-between">
+                         <div className="absolute top-3 left-3 z-10 flex flex-col gap-1 max-w-[80px]">
+                            {p.offerTag && p.offerTag !== "None" && <span className="bg-orange-500 text-white text-[7px] font-black px-1 py-0.5 rounded uppercase">{p.offerTag}</span>}
+                            {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md text-center">{p.discount}% OFF</span>}
                          </div>
-                         
-                         <div className="mt-3">
-                           {p.stock <= 0 ? (
-                             <button disabled className="w-full py-3 rounded-2xl font-bold text-[10px] bg-gray-200 text-gray-400">OUT OF STOCK</button>
-                           ) : cartItem ? (
-                             <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-emerald-500 rounded-2xl text-white p-1 font-black">
-                               <button onClick={() => removeFromCart(p)} className="px-3 py-1.5 text-sm bg-white/20 rounded-xl">-</button>
-                               <span className="text-xs">{cartItem.qty}</span>
-                               <button onClick={() => addToCart(p)} className="px-3 py-1.5 text-sm bg-white/20 rounded-xl">+</button>
+
+                         <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-blue-50 via-white to-green-50 rounded-2xl overflow-hidden">
+                           {p.img.includes('http') ? <img src={p.img} alt="product" className="h-full w-full object-cover rounded-2xl" /> : <span className="text-5xl">{p.img}</span>}
+                         </div>
+                         <div className="px-1 text-center flex-1 flex flex-col justify-between">
+                           <div>
+                             <h3 className="font-bold text-gray-700 text-sm truncate">{p.name}</h3>
+                             <div className="flex items-center justify-center gap-2 mt-1">
+                               <span className="text-lg font-black text-blue-600">₹{finalPrice}</span>
                              </div>
-                           ) : (
-                             <button onClick={() => addToCart(p)} className="w-full py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white">ADD TO BAG</button>
-                           )}
+                           </div>
+                           
+                           <div className="mt-3">
+                             {p.stock <= 0 ? (
+                               <button disabled className="w-full py-3 rounded-2xl font-bold text-[10px] bg-gray-200 text-gray-400">OUT OF STOCK</button>
+                             ) : cartItem ? (
+                               <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-emerald-500 rounded-2xl text-white p-1 font-black">
+                                 <button onClick={() => removeFromCart(p)} className="px-3 py-1.5 text-sm bg-white/20 rounded-xl">-</button>
+                                 <span className="text-xs">{cartItem.qty}</span>
+                                 <button onClick={() => addToCart(p)} className="px-3 py-1.5 text-sm bg-white/20 rounded-xl">+</button>
+                               </div>
+                             ) : (
+                               <button onClick={() => addToCart(p)} className="w-full py-3 rounded-2xl font-bold text-[10px] tracking-wider transition-all shadow-md bg-gradient-to-r from-blue-500 via-emerald-500 to-green-500 text-white">ADD TO BAG</button>
+                             )}
+                           </div>
                          </div>
-                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </main>
+                      </div>
+                    );
+                  })
+                )}
+              </main>
+            )}
 
-            {/* Sticky Bottom Navigation */}
-            <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-gray-200 p-2 z-50 flex justify-around items-center rounded-t-[2rem]">
-              <button onClick={() => setActiveTab("shop")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-blue-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
-                <span className="text-lg">🛒</span>
-                <span className="text-[10px]">Shop</span>
+            {/* Footer space */}
+            <div className="p-10 text-center opacity-30 text-xs font-bold mb-16 text-black">DAILY NEEDS HUB © 2026</div>
+
+            {/* 🌟 UPGRADED FIXED BOTTOM NAVIGATION BAR WITH 4 ITEMS 🌟 */}
+            <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-gray-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-[0_-8px_30px_rgba(0,0,0,0.06)]">
+              
+              {/* Item 1: Shop */}
+              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl transition-all ${activeTab === "shop" && activeCategory === "All" ? "text-blue-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+                <span className="text-xl">🛒</span>
+                <span className="text-[10px] mt-0.5">Shop</span>
               </button>
-              <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "offers" ? "text-red-500 font-black scale-105" : "text-gray-400 font-bold"}`}>
-                <span className="text-lg">🎁</span>
-                <span className="text-[10px]">Offers Zone</span>
+
+              {/* Item 2: Categories */}
+              <button onClick={() => setActiveTab("categories")} className={`flex flex-col items-center p-2 rounded-xl transition-all ${activeTab === "categories" ? "text-teal-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+                <span className="text-xl">🗂️</span>
+                <span className="text-[10px] mt-0.5">Category</span>
               </button>
+
+              {/* Item 3: Offers Zone */}
+              <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl transition-all ${activeTab === "offers" ? "text-red-500 font-black scale-105" : "text-gray-400 font-bold"}`}>
+                <span className="text-xl">🎁</span>
+                <span className="text-[10px] mt-0.5">Offers</span>
+              </button>
+
+              {/* Item 4: Basket / Bag with Counter */}
+              <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-br from-green-500 to-blue-600 text-white rounded-2xl px-3 py-1.5 shadow-md active:scale-95 transition-all">
+                <span className="text-xs font-black">🛍️ Basket</span>
+                <span className="text-[10px] font-extrabold opacity-95">₹{cartTotal}</span>
+              </button>
+
             </div>
           </>
         )}
@@ -396,14 +415,14 @@ export default function App() {
           <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
             {!showInvoice ? (
               <>
-                <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500 mb-6">Aapka Bag</h2>
+                <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500 mb-6">Aapka Bag</h2>
                 <div className="space-y-3 mb-6">
-                  <input placeholder="Aapka Naam" value={custInfo.name} className="w-full p-3 border border-blue-100 rounded-xl bg-gray-50 text-sm" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
-                  <textarea placeholder="Delivery Address" className="w-full p-3 border border-blue-100 rounded-xl bg-gray-50 text-sm" rows="3" onChange={(e) => setCustInfo({...custInfo, address: e.target.value})} />
+                  <input placeholder="Aapka Naam" value={custInfo.name} className="w-full p-3 border border-blue-100 rounded-xl bg-gray-50 text-sm text-black" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
+                  <textarea placeholder="Delivery Address" value={custInfo.address} className="w-full p-3 border border-blue-100 rounded-xl bg-gray-50 text-sm text-black" rows="3" onChange={(e) => setCustInfo({...custInfo, address: e.target.value})} />
                 </div>
                 {cart.map(item => (
                   <div key={item.id} className="flex justify-between py-3 border-b text-xs items-center">
-                    <span className="font-bold text-gray-800">{item.name}</span>
+                    <span className="font-bold text-gray-800">{item.name} (x{item.qty})</span>
                     <span className="font-bold text-blue-600">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</span>
                   </div>
                 ))}
@@ -431,3 +450,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 
-// Firebase Setup - Aapki real configuration yahan add ho gayi hai
+// Firebase Setup - Real Credentials Connected
 const firebaseConfig = {
   apiKey: "AIzaSyChwU32Co32x2BFk5XQ04Gr_230JexB2KU",
   authDomain: "daily-needs-hub-15205.firebaseapp.com",
@@ -23,8 +23,6 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack"];
 const BRAND_LOGO_URL = "/logo.png"; 
-
-// 100% Verified Merchant UPI String
 const MY_UPI_ID = "8637589429-3@ybl"; 
 
 export default function App() {
@@ -36,13 +34,12 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [activeTab, setActiveTab] = useState("shop"); // 'shop', 'categories', 'offers', 'account'
+  const [activeTab, setActiveTab] = useState("shop"); // 'shop' acts as Home now
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState("");
   const [darkMode, setDarkMode] = useState(false);
-  const [showPrivacy, setShowPrivacy] = useState(false);
-  const [custInfo, setCustInfo] = useState({ name: '', address: '' });
+  const [custInfo, setCustInfo] = useState({ name: '', address: '', landmark: '', vill: '', pin: '' });
   
   const [slides, setSlides] = useState([
     { id: 1, img: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&q=80", text: "⚡ SUMMER SPECIAL SALE: Min 10% OFF!" },
@@ -184,11 +181,12 @@ export default function App() {
   });
 
   const handleCheckoutInit = async () => {
-    if(!custInfo.name || !custInfo.address) return alert("Naam aur Pata bharna zaruri hai!");
+    if(!custInfo.name || !custInfo.vill || !custInfo.pin) return alert("Naam, Village aur PIN Code bharna zaruri hai!");
+    const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
     try {
       const docRef = await addDoc(collection(db, "orders"), {
         customerName: custInfo.name,
-        address: custInfo.address,
+        address: fullAddressString,
         userEmail: user ? user.email : "Anonymous",
         items: cart.map(i => ({ name: i.name, qty: i.qty, total: getDiscountedPrice(i.price, i.discount) * i.qty })),
         totalAmount: cartTotal,
@@ -204,7 +202,8 @@ export default function App() {
 
   const sendWhatsAppNotification = () => {
     const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
-    const msg = `Naya Order & Payment Done - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
+    const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
+    const msg = `Naya Order & Payment Done - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nAddress: ${fullAddressString}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     
     setShowInvoice(false);
@@ -226,7 +225,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-amber-50/60 via-white to-emerald-50/60 text-gray-900'} pb-32 transition-all duration-500 font-sans`}>
       
-      {/* Header */}
+      {/* Header with Header-Login & DarkMode */}
       <header className="p-3 bg-white/95 backdrop-blur-md shadow-md sticky top-0 z-40 flex justify-between items-center border-b border-orange-100">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <img src={BRAND_LOGO_URL} alt="Daily Needs Hub Logo" className="w-12 h-12 object-contain rounded-xl shadow-sm bg-orange-50 p-0.5 border border-orange-100" />
@@ -237,12 +236,17 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-           <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs">{darkMode ? '☀️' : '🌙'}</button>
+           {!user && (
+             <button onClick={handleGoogleLogin} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-md transition-all active:scale-95">
+               Login
+             </button>
+           )}
+           <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs shadow-inner">{darkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
 
       <div className="max-w-md mx-auto">
-        {/* Search Bar */}
+        {/* Search Bar (Only on Home tab) */}
         {activeTab === "shop" && (
           <div className="p-4">
             <input 
@@ -258,7 +262,7 @@ export default function App() {
             <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
                <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Central Dashboard</h2>
                {!isAdmin ? (
-                 <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'admin123' && setIsAdmin(true)} />
+                 <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'Younus@968687' && setIsAdmin(true)} />
                ) : (
                  <>
                     {/* Live Incoming Orders Room */}
@@ -287,7 +291,7 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Banners Manager */}
+                    {/* Banner Manage */}
                     <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 space-y-3">
                       <h3 className="text-xs font-bold text-orange-700">⚙️ Manage 5 Dynamic Banners</h3>
                       {slides.map((s, index) => (
@@ -297,6 +301,7 @@ export default function App() {
                       ))}
                     </div>
 
+                    {/* Add Item Form */}
                     <form onSubmit={addProduct} className="grid gap-3">
                       <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
                       <div className="grid grid-cols-3 gap-2">
@@ -318,7 +323,7 @@ export default function App() {
                       <button type="submit" className="bg-orange-600 text-white p-4 rounded-xl font-bold">ADD ITEM LIVE</button>
                     </form>
 
-                    {/* Matrix Management Controls */}
+                    {/* List Management controls */}
                     <div className="space-y-2 pt-4 border-t">
                       {products.map(p => (
                         <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
@@ -339,13 +344,14 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Customer Layouts */
+          /* User Layout */
           <>
             {activeTab === "shop" && (
               <>
                 <div className="px-4 mb-4">
                   <div className="bg-gradient-to-r from-orange-500 via-emerald-500 to-blue-600 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
-                    <h2 className="text-2xl font-black mb-1">Aapki Apni Dukan! 🛒</h2>
+                    {/* Welcome statement showing name when login is done */}
+                    <h2 className="text-2xl font-black mb-1">Hello, {user?.displayName || "Guest Grahak"}! 👋</h2>
                     <p className="text-xs opacity-90 italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
                   </div>
                 </div>
@@ -395,15 +401,15 @@ export default function App() {
               </div>
             )}
 
-            {/* Account Tab */}
+            {/* Account Tab with deep address control logic */}
             {activeTab === "account" && (
               <div className="px-4 space-y-6">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
                   <h2 className="text-xl font-black">👤 My Account Dashboard</h2>
-                  <p className="text-xs opacity-80">Profile check aur active orders live tracking matrix</p>
+                  <p className="text-xs opacity-80">Profile details and location metrics storage</p>
                 </div>
 
-                {/* Google Sign-in Verification Box */}
+                {/* Google Connection Node */}
                 <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
                   <div>
                     {user ? (
@@ -425,7 +431,41 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Live Tracking Engine Inner Room */}
+                {/* Address Configuration Form Module */}
+                <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
+                  <h3 className="font-black text-sm text-gray-800 border-b pb-2">📍 Manage Shipping Address</h3>
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase">Village / City Name *</label>
+                      <input 
+                        type="text" placeholder="Enter Village / Town name" 
+                        value={custInfo.vill}
+                        className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50/50 text-xs font-semibold text-black mt-1"
+                        onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase">Famous Landmark</label>
+                      <input 
+                        type="text" placeholder="Near school, temple, mission etc." 
+                        value={custInfo.landmark}
+                        className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50/50 text-xs font-semibold text-black mt-1"
+                        onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase">PIN Code *</label>
+                      <input 
+                        type="number" placeholder="6 Digit PIN code" 
+                        value={custInfo.pin}
+                        className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50/50 text-xs font-semibold text-black mt-1"
+                        onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Tracker */}
                 <div className="space-y-3">
                   <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 Live Orders Status Tracker</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
@@ -440,7 +480,7 @@ export default function App() {
                           <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] shadow-sm font-black border border-emerald-100">{o.status}</span>
                         </div>
                         <div className="text-xs text-gray-600 font-bold border-b pb-1">
-                          {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}) </span>)}
+                          {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
                         </div>
                         <div className="flex justify-between items-center text-xs font-black pt-1">
                           <span className="text-gray-400">Date: {o.createdAt.split(',')[0]}</span>
@@ -453,7 +493,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Products Layout View */}
+            {/* Main Product Grid Engine (Hide in Category & Account Tabs) */}
             {activeTab !== "categories" && activeTab !== "account" && (
               <main className="p-4 grid grid-cols-2 gap-4">
                 {filtered.map(p => {
@@ -495,38 +535,50 @@ export default function App() {
               </main>
             )}
 
-            {/* Footer */}
-            <footer className="mx-4 my-8 pt-6 text-gray-800 space-y-6 mb-28 border-t border-gray-200/60">
-              <div className="flex items-center gap-3">
-                <img src={BRAND_LOGO_URL} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
-                <div>
-                  <h3 className="text-base font-black uppercase">Daily Needs Hub</h3>
-                  <p className="text-[9px] text-gray-400 font-bold tracking-widest uppercase">Everyday Needs, Delivered Fast</p>
+            {/* Footer System (Strictly visible ONLY on Home/Shop tab) */}
+            {activeTab === "shop" && (
+              <footer className="mx-4 my-8 pt-6 text-gray-800 space-y-6 mb-28 border-t border-gray-200/60">
+                <div className="flex items-center gap-3">
+                  <img src={BRAND_LOGO_URL} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
+                  <div>
+                    <h3 className="text-base font-black uppercase">Daily Needs Hub</h3>
+                    <p className="text-[9px] text-gray-400 font-bold tracking-widest uppercase">Everyday Needs, Delivered Fast</p>
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Follow With Us</p>
-                <div className="flex gap-4">
-                  <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700">Facebook</a>
-                  <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700">Instagram</a>
-                  <a href="https://youtube.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700">YouTube</a>
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Follow With Us</p>
+                  <div className="flex gap-4">
+                    {/* Original styled brand indicators */}
+                    <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
+                      <span>🌐</span> Facebook
+                    </a>
+                    <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-2.5 py-1 rounded-lg border border-pink-100">
+                      <span>📸</span> Instagram
+                    </a>
+                    <a href="https://youtube.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-100">
+                      <span>📺</span> YouTube
+                    </a>
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <div className="text-xs font-bold text-gray-600 space-y-1">
-                  <p>📞 Mobile: <a href="tel:+918637589429" className="text-emerald-600 underline">+91 8637589429</a></p>
-                  <p>✉️ Email: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline">dailyneedshub@gmail.com</a></p>
+                <div className="space-y-1.5">
+                  <div className="text-xs font-bold text-gray-600 space-y-2">
+                    <p>📞 Mobile: <a href="tel:+918637589429" className="text-emerald-600 underline">+91 8637589429</a></p>
+                    <p>✉️ Email: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline">dailyneedshub@gmail.com</a></p>
+                    {/* Legal additions */}
+                    <p>☎️ Contact Us: <span className="text-blue-600 underline cursor-pointer">Get Support Call</span></p>
+                    <p>🛡️ Privacy Protection: <span className="text-gray-500 underline cursor-pointer">Privacy Policy & Terms</span></p>
+                  </div>
                 </div>
-              </div>
-              <div className="text-xs font-extrabold text-gray-500 pt-2 border-t">
-                📍 Bolpur to Palitpur Road, Near Al Ameen Mission, Papuri, Nanoor, Birbhum, West Bengal, 731240
-              </div>
-            </footer>
+                <div className="text-xs font-extrabold text-gray-500 pt-2 border-t">
+                  📍 Bolpur to Palitpur Road, Near Al Ameen Mission, Papuri, Nanoor, Birbhum, West Bengal, 731240
+                </div>
+              </footer>
+            )}
 
-            {/* 4+1 Tab Fixed Navigation Bar */}
+            {/* Navigation Bar with Home icon update */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-xl">
               <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
-                <span className="text-lg">🛒</span><span className="text-[10px]">Shop</span>
+                <span className="text-lg">🏠</span><span className="text-[10px]">Home</span>
               </button>
               <button onClick={() => setActiveTab("categories")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "categories" ? "text-emerald-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🗂️</span><span className="text-[10px]">Category</span>
@@ -546,7 +598,7 @@ export default function App() {
         )}
       </div>
 
-      {/* Cart Drawer System */}
+      {/* Cart Drawer Panel */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
@@ -555,10 +607,13 @@ export default function App() {
                 <h2 className="text-xl font-black mb-6">Aapka Bag</h2>
                 <div className="space-y-3 mb-6">
                   <input placeholder="Aapka Naam" value={custInfo.name} className="w-full p-3 border border-orange-100 rounded-xl bg-gray-50 text-sm text-black font-bold" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
-                  <textarea placeholder="Delivery Address" value={custInfo.address} className="w-full p-3 border border-orange-100 rounded-xl bg-gray-50 text-sm text-black font-bold" rows="3" onChange={(e) => setCustInfo({...custInfo, address: e.target.value})} />
+                  
+                  <div className="p-3 bg-blue-50/50 border rounded-xl text-xs font-bold text-blue-900">
+                    ℹ️ Order address will be processed from your Account Tab settings configuration directly.
+                  </div>
                 </div>
-                {cart.map(item => (
-                  <div key={item.id} className="flex justify-between py-3 border-b text-xs items-center">
+                {cart.map((item, idx) => (
+                  <div key={idx} className="flex justify-between py-3 border-b text-xs items-center">
                     <span className="font-extrabold text-gray-800">{item.name} (x{item.qty})</span>
                     <span className="font-black text-orange-600">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</span>
                   </div>
@@ -576,7 +631,6 @@ export default function App() {
                   <h2 className="text-md font-black text-orange-600 uppercase">Verify Bill & Pay</h2>
                 </div>
 
-                {/* Instant Live UPI QR Generation Panel */}
                 <div className="p-4 bg-orange-50/50 border-2 border-dashed border-orange-200 rounded-2xl text-center space-y-3 shadow-inner">
                   <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black">⚡ INSTANT UPI PAYMENT</span>
                   <p className="text-[11px] text-gray-600 font-bold">Scan QR code using Google Pay, PhonePe or Paytm</p>
@@ -584,7 +638,7 @@ export default function App() {
                   <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
                     <img 
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
-                      alt="UPI QR Payment Link" 
+                      alt="UPI QR Payment" 
                       className="w-36 h-36 mx-auto object-contain" 
                     />
                   </div>
@@ -601,6 +655,7 @@ export default function App() {
                   <p className="border-b pb-1 text-center font-black text-gray-800 text-xs uppercase">Retail Cash Memo</p>
                   <p><b>Order ID:</b> {currentOrderId}</p>
                   <p><b>Grahak:</b> {custInfo.name}</p>
+                  <p><b>Vill & Pin Details:</b> {custInfo.vill} (PIN: {custInfo.pin})</p>
                   <p className="border-t pt-1 flex justify-between text-orange-600 font-black text-xs"><span>Total Amount:</span><span>₹{cartTotal}</span></p>
                 </div>
 

@@ -3,14 +3,15 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 
-// Firebase Setup - Config directly added inside the code to fix connection issues
+// Firebase Setup - Aapki real configuration yahan add ho gayi hai
 const firebaseConfig = {
-  apiKey: "AIzaSyD-LzH54J_yXo9B_P8321QWmkRtNp65",
-  authDomain: "daily-needs-hub-8fee3.firebaseapp.com",
-  projectId: "daily-needs-hub-8fee3",
-  storageBucket: "daily-needs-hub-8fee3.appspot.com",
-  messagingSenderId: "8637589429",
-  appId: "1:8637589429:web:9a8b7c6d5e4f3g2h1i"
+  apiKey: "AIzaSyChwU32Co32x2BFk5XQ04Gr_230JexB2KU",
+  authDomain: "daily-needs-hub-15205.firebaseapp.com",
+  projectId: "daily-needs-hub-15205",
+  storageBucket: "daily-needs-hub-15205.firebasestorage.app",
+  messagingSenderId: "9944785618",
+  appId: "1:9944785618:web:8ebfa1d9cb834a3477c30b",
+  measurementId: "G-J06SVVPVZF"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -260,7 +261,7 @@ export default function App() {
                  <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'admin123' && setIsAdmin(true)} />
                ) : (
                  <>
-                    {/* Live Orders room */}
+                    {/* Live Incoming Orders Room */}
                     <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 space-y-3">
                       <h3 className="text-xs font-black text-blue-800">📦 CUSTOMER INCOMING ORDERS ROOM ({orders.length})</h3>
                       {orders.map(ord => (
@@ -286,7 +287,7 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Banner Manage */}
+                    {/* Banners Manager */}
                     <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 space-y-3">
                       <h3 className="text-xs font-bold text-orange-700">⚙️ Manage 5 Dynamic Banners</h3>
                       {slides.map((s, index) => (
@@ -296,7 +297,6 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Add Item Form */}
                     <form onSubmit={addProduct} className="grid gap-3">
                       <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
                       <div className="grid grid-cols-3 gap-2">
@@ -318,7 +318,7 @@ export default function App() {
                       <button type="submit" className="bg-orange-600 text-white p-4 rounded-xl font-bold">ADD ITEM LIVE</button>
                     </form>
 
-                    {/* List Management */}
+                    {/* Matrix Management Controls */}
                     <div className="space-y-2 pt-4 border-t">
                       {products.map(p => (
                         <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
@@ -339,7 +339,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* User Layout */
+          /* Customer Layouts */
           <>
             {activeTab === "shop" && (
               <>
@@ -403,7 +403,7 @@ export default function App() {
                   <p className="text-xs opacity-80">Profile check aur active orders live tracking matrix</p>
                 </div>
 
-                {/* Google Sign-in */}
+                {/* Google Sign-in Verification Box */}
                 <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
                   <div>
                     {user ? (
@@ -425,7 +425,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Status Tracker */}
+                {/* Live Tracking Engine Inner Room */}
                 <div className="space-y-3">
                   <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 Live Orders Status Tracker</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
@@ -440,7 +440,7 @@ export default function App() {
                           <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] shadow-sm font-black border border-emerald-100">{o.status}</span>
                         </div>
                         <div className="text-xs text-gray-600 font-bold border-b pb-1">
-                          {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
+                          {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}) </span>)}
                         </div>
                         <div className="flex justify-between items-center text-xs font-black pt-1">
                           <span className="text-gray-400">Date: {o.createdAt.split(',')[0]}</span>
@@ -453,7 +453,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Product View */}
+            {/* Products Layout View */}
             {activeTab !== "categories" && activeTab !== "account" && (
               <main className="p-4 grid grid-cols-2 gap-4">
                 {filtered.map(p => {
@@ -523,7 +523,7 @@ export default function App() {
               </div>
             </footer>
 
-            {/* Navigation Tab Bar */}
+            {/* 4+1 Tab Fixed Navigation Bar */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-xl">
               <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🛒</span><span className="text-[10px]">Shop</span>
@@ -546,7 +546,7 @@ export default function App() {
         )}
       </div>
 
-      {/* Cart Drawer Panel */}
+      {/* Cart Drawer System */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
@@ -576,6 +576,7 @@ export default function App() {
                   <h2 className="text-md font-black text-orange-600 uppercase">Verify Bill & Pay</h2>
                 </div>
 
+                {/* Instant Live UPI QR Generation Panel */}
                 <div className="p-4 bg-orange-50/50 border-2 border-dashed border-orange-200 rounded-2xl text-center space-y-3 shadow-inner">
                   <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black">⚡ INSTANT UPI PAYMENT</span>
                   <p className="text-[11px] text-gray-600 font-bold">Scan QR code using Google Pay, PhonePe or Paytm</p>
@@ -583,7 +584,7 @@ export default function App() {
                   <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
                     <img 
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
-                      alt="UPI QR Payment" 
+                      alt="UPI QR Payment Link" 
                       className="w-36 h-36 mx-auto object-contain" 
                     />
                   </div>

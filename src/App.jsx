@@ -3,8 +3,16 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
 
-// Firebase Setup
-const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || "{}");
+// Firebase Setup - Config directly added inside the code to fix connection issues
+const firebaseConfig = {
+  apiKey: "AIzaSyD-LzH54J_yXo9B_P8321QWmkRtNp65",
+  authDomain: "daily-needs-hub-8fee3.firebaseapp.com",
+  projectId: "daily-needs-hub-8fee3",
+  storageBucket: "daily-needs-hub-8fee3.appspot.com",
+  messagingSenderId: "8637589429",
+  appId: "1:8637589429:web:9a8b7c6d5e4f3g2h1i"
+};
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -174,7 +182,6 @@ export default function App() {
     }
   });
 
-  // Strict local generation interception - prevents immediate app context jumps
   const handleCheckoutInit = async () => {
     if(!custInfo.name || !custInfo.address) return alert("Naam aur Pata bharna zaruri hai!");
     try {
@@ -246,7 +253,6 @@ export default function App() {
         )}
 
         {window.location.pathname === '/admin' ? (
-          /* Live Incoming Orders Panel Room */
           <div className="p-4">
             <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
                <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Central Dashboard</h2>
@@ -254,7 +260,7 @@ export default function App() {
                  <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'admin123' && setIsAdmin(true)} />
                ) : (
                  <>
-                    {/* Live Track Management Panel */}
+                    {/* Live Orders room */}
                     <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 space-y-3">
                       <h3 className="text-xs font-black text-blue-800">📦 CUSTOMER INCOMING ORDERS ROOM ({orders.length})</h3>
                       {orders.map(ord => (
@@ -280,7 +286,7 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Banners Manager */}
+                    {/* Banner Manage */}
                     <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 space-y-3">
                       <h3 className="text-xs font-bold text-orange-700">⚙️ Manage 5 Dynamic Banners</h3>
                       {slides.map((s, index) => (
@@ -290,6 +296,7 @@ export default function App() {
                       ))}
                     </div>
 
+                    {/* Add Item Form */}
                     <form onSubmit={addProduct} className="grid gap-3">
                       <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
                       <div className="grid grid-cols-3 gap-2">
@@ -311,7 +318,7 @@ export default function App() {
                       <button type="submit" className="bg-orange-600 text-white p-4 rounded-xl font-bold">ADD ITEM LIVE</button>
                     </form>
 
-                    {/* Matrix Management Controls */}
+                    {/* List Management */}
                     <div className="space-y-2 pt-4 border-t">
                       {products.map(p => (
                         <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
@@ -332,7 +339,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Customer Layouts */
+          /* User Layout */
           <>
             {activeTab === "shop" && (
               <>
@@ -388,7 +395,7 @@ export default function App() {
               </div>
             )}
 
-            {/* 👤 BRAND NEW PERSONALIZED "MY ACCOUNT" PROFILE & TRACKING ROOM */}
+            {/* Account Tab */}
             {activeTab === "account" && (
               <div className="px-4 space-y-6">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
@@ -396,7 +403,7 @@ export default function App() {
                   <p className="text-xs opacity-80">Profile check aur active orders live tracking matrix</p>
                 </div>
 
-                {/* Google Sign-in Verification Box */}
+                {/* Google Sign-in */}
                 <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
                   <div>
                     {user ? (
@@ -418,7 +425,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Live Tracking Engine Inner Room */}
+                {/* Status Tracker */}
                 <div className="space-y-3">
                   <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 Live Orders Status Tracker</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
@@ -446,7 +453,7 @@ export default function App() {
               </div>
             )}
 
-            {/* Products Layout View */}
+            {/* Product View */}
             {activeTab !== "categories" && activeTab !== "account" && (
               <main className="p-4 grid grid-cols-2 gap-4">
                 {filtered.map(p => {
@@ -516,7 +523,7 @@ export default function App() {
               </div>
             </footer>
 
-            {/* 🌟 PREMIUM RECONFIGURED 4+1 Tab Icon Fixed Bottom Navigation Bar 🌟 */}
+            {/* Navigation Tab Bar */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-xl">
               <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🛒</span><span className="text-[10px]">Shop</span>
@@ -527,12 +534,9 @@ export default function App() {
               <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "offers" ? "text-red-500 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🎁</span><span className="text-[10px]">Offers</span>
               </button>
-              
-              {/* BRAND NEW "MY ACCOUNT" TAB ACCENT ENTRY INSTEAD OF DRY TRACK ICON */}
               <button onClick={() => setActiveTab("account")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "account" ? "text-blue-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">👤</span><span className="text-[10px]">Account</span>
               </button>
-              
               <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white rounded-2xl px-2.5 py-1 shadow-md">
                 <span className="text-[10px] font-black">🛍️ Bag</span>
                 <span className="text-[9px]">₹{cartTotal}</span>
@@ -542,7 +546,7 @@ export default function App() {
         )}
       </div>
 
-      {/* Cart Drawer System */}
+      {/* Cart Drawer Panel */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
@@ -572,7 +576,6 @@ export default function App() {
                   <h2 className="text-md font-black text-orange-600 uppercase">Verify Bill & Pay</h2>
                 </div>
 
-                {/* Instant Live UPI QR Generation Panel */}
                 <div className="p-4 bg-orange-50/50 border-2 border-dashed border-orange-200 rounded-2xl text-center space-y-3 shadow-inner">
                   <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black">⚡ INSTANT UPI PAYMENT</span>
                   <p className="text-[11px] text-gray-600 font-bold">Scan QR code using Google Pay, PhonePe or Paytm</p>
@@ -580,7 +583,7 @@ export default function App() {
                   <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
                     <img 
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
-                      alt="UPI QR Payment Link" 
+                      alt="UPI QR Payment" 
                       className="w-36 h-36 mx-auto object-contain" 
                     />
                   </div>

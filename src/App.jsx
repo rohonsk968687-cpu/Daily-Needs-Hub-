@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy, setDoc, getDoc } from 'firebase/firestore';
 
 // Firebase Setup - Real Credentials Connected
 const firebaseConfig = {
@@ -39,11 +39,12 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [activeTab, setActiveTab] = useState("shop"); // 'shop' acts as Home/Shop
+  const [activeTab, setActiveTab] = useState("shop"); 
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState("");
   const [darkMode, setDarkMode] = useState(false);
+  const [legalModal, setLegalModal] = useState({ isOpen: false, title: '', content: '' });
   
   // Flash Sale Timer (1 hour initial value)
   const [flashTime, setFlashTime] = useState(3600); 
@@ -64,6 +65,35 @@ export default function App() {
   ]);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
+
+  // Load and save Cart to Firebase when user login status changes (Persistent Cart)
+  useEffect(() => {
+    if (user && !user.isAnonymous) {
+      const loadUserCart = async () => {
+        const cartDoc = await getDoc(doc(db, "carts", user.uid));
+        if (cartDoc.exists()) {
+          setCart(cartDoc.data().items || []);
+        }
+      };
+      loadUserCart();
+    } else {
+      // Local storage backup for guest sessions
+      const localCart = localStorage.getItem("dnh_guest_cart");
+      if (localCart) {
+        try { setCart(JSON.parse(localCart)); } catch(e) { console.log(e); }
+      }
+    }
+  }, [user]);
+
+  // Sync Cart State with DB or LocalStorage
+  const syncCart = async (updatedCart) => {
+    setCart(updatedCart);
+    if (user && !user.isAnonymous) {
+      await setDoc(doc(db, "carts", user.uid), { items: updatedCart }, { merge: true });
+    } else {
+      localStorage.setItem("dnh_guest_cart", JSON.stringify(updatedCart));
+    }
+  };
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -134,7 +164,9 @@ export default function App() {
   const handleLogout = async () => {
     await signOut(auth);
     setUser(null);
-    alert("Logged out!");
+    setCart([]);
+    localStorage.removeItem("dnh_guest_cart");
+    alert("Logged out successfully!");
   };
 
   const saveAddressToLocal = () => {
@@ -151,24 +183,28 @@ export default function App() {
   const addToCart = (p) => {
     if (p.stock <= 0) return alert("Stock nahi hai!");
     const exist = cart.find(x => x.id === p.id);
+    let updatedCart = [];
     if (exist) {
       if (exist.qty >= p.stock) return alert("Stock limit reached!");
-      setCart(cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty + 1 } : x));
+      updatedCart = cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty + 1 } : x);
     } else {
-      setCart([...cart, { ...p, qty: 1 }]);
+      updatedCart = [...cart, { ...p, qty: 1 }];
     }
+    syncCart(updatedCart);
   };
 
   const updateCartQty = (id, delta) => {
     const item = cart.find(x => x.id === id);
     if (!item) return;
     const nextQty = item.qty + delta;
+    let updatedCart = [];
     if (nextQty <= 0) {
-      setCart(cart.filter(x => x.id !== id));
+      updatedCart = cart.filter(x => x.id !== id);
     } else {
       if (delta > 0 && nextQty > item.stock) return alert("Stock limit exceeded!");
-      setCart(cart.map(x => x.id === id ? { ...item, qty: nextQty } : x));
+      updatedCart = cart.map(x => x.id === id ? { ...item, qty: nextQty } : x);
     }
+    syncCart(updatedCart);
   };
 
   const toggleWishlist = (p) => {
@@ -235,6 +271,7 @@ export default function App() {
   };
 
   const cartTotal = cart.reduce((a, c) => a + getDiscountedPrice(c.price, c.discount) * c.qty, 0);
+  const totalSales = orders.reduce((a, o) => a + (o.totalAmount || 0), 0);
   
   // Advanced Filter Engine
   const filtered = products.filter(p => {
@@ -280,6 +317,7 @@ export default function App() {
     
     setShowInvoice(false);
     setCart([]);
+    syncCart([]);
     setIsCartOpen(false);
   };
 
@@ -299,6 +337,31 @@ export default function App() {
       case 'Vegetables': return '🥬';
       default: return '📦';
     }
+  };
+
+  // Open Legal Modals Content
+  const handleOpenLegal = (type) => {
+    let title = '';
+    let content = '';
+
+    if (type === 'about') {
+      title = "About Our Store 🛒";
+      content = `Daily Needs Hub (DNH) is your trusted online neighborhood grocery destination. Established with a mission to bring fresh dairy, farm-fresh vegetables, crisp snacks, and premium beverages straight to your doorstep in Bolpur and Nanoor regions.\n\nWe bridge the gap between quality food sources and your kitchen, ensuring lightning-fast delivery, highly competitive market-beating prices, and verified safe online experiences. Thank you for making us your daily shopping partner!`;
+    } else if (type === 'privacy') {
+      title = "Privacy Protection Policy 🛡️";
+      content = `At Daily Needs Hub, your privacy is our supreme priority:\n\n1. Data Collection: We only collect essential delivery details like your Name, Shipping Address, and Contact Number for order processing.\n2. Payment Safety: We utilize universal secure UPI links. We never store credit cards, bank accounts, or sensitive UPI PINs on our servers.\n3. Account Security: Google Authentication guarantees secure, authorized tracking. We never share or sell customer data with third-party networks. Your trust is fully safe with us.`;
+    } else if (type === 'refund') {
+      title = "Refund & Return Terms 🔄";
+      content = `We want you to shop with absolute confidence. Our easy refund criteria includes:\n\n1. Fresh Goods (Dairy, Vegetables): Eligible for immediate replacement or refund within 3 hours of delivery if found damaged or stale.\n2. Packed Items: Damaged packets or expired batches can be returned at the time of delivery itself.\n3. Refund Method: Approved refunds are credited instantly within 24 hours back to your original payment mode or UPI address.`;
+    } else if (type === 'terms') {
+      title = "Terms & Conditions 📜";
+      content = `Welcome to Daily Needs Hub. By accessing our platform, you agree to these basic guidelines:\n\n1. Pricing: All rates listed on the application are verified and calculated accurately.\n2. Service Area: Currently active across Bolpur, Nanoor, Papuri, and adjacent Birbhum regions.\n3. Order Placement: Orders are confirmed once details are logged on WhatsApp or processed through the cash checkout invoice window. Fraudulent activities or dummy checks will result in account restriction.`;
+    } else if (type === 'faq') {
+      title = "Help & FAQs Desk ❓";
+      content = `Q1. What are your delivery timings?\nAns: We deliver daily from 7:00 AM to 9:00 PM.\n\nQ2. Is there a minimum order limit?\nAns: No, you can order as little or as much as you like!\n\nQ3. How can I pay?\nAns: You can pay instantly using any mobile app like Google Pay, PhonePe, Paytm, or choose cash settlement upon arrival.\n\nQ4. How do I track my active orders?\nAns: Just navigate to the 'Account' tab on the bottom menu bar to see live status updates.`;
+    }
+
+    setLegalModal({ isOpen: true, title, content });
   };
 
   return (
@@ -330,7 +393,7 @@ export default function App() {
 
       <div className="max-w-md mx-auto">
         {/* Search Bar Container */}
-        {activeTab === "shop" && (
+        {activeTab === "shop" && window.location.pathname !== '/admin' && (
           <div className="p-4">
             <input 
               type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks..." 
@@ -343,11 +406,11 @@ export default function App() {
         {window.location.pathname === '/admin' ? (
           <div className="p-4">
             <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
-               <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Central Dashboard</h2>
+               <h2 className="text-xl font-bold mb-4 text-orange-600 text-center">Admin Central Dashboard</h2>
                {!isAdmin ? (
                  <input type="password" placeholder="Enter Protected Password" className="border p-3 w-full rounded-xl text-center" onChange={(e) => e.target.value === 'Younus@968687' && setIsAdmin(true)} />
                ) : (
-                 <>
+                 <div className="space-y-6">
                     {/* Sales Analytics Monitor */}
                     <div className="bg-gradient-to-br from-gray-900 to-slate-800 p-5 rounded-2xl text-white space-y-1 shadow-md">
                       <p className="text-[10px] tracking-wider uppercase opacity-60 font-bold">Total Gross Sales Volume</p>
@@ -390,11 +453,12 @@ export default function App() {
 
                     {/* Add Item Form Engine */}
                     <form onSubmit={addProduct} className="grid gap-3">
-                      <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
+                      <h3 className="text-xs font-black text-gray-400 uppercase">📦 Add New Store Product</h3>
+                      <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50 text-xs" required />
                       <div className="grid grid-cols-3 gap-2">
-                        <input name="itemPrice" type="number" placeholder="MRP (₹)" className="border p-3 rounded-xl bg-gray-50" required />
-                        <input name="itemDiscount" type="number" placeholder="Disc %" className="border p-3 rounded-xl bg-gray-50" />
-                        <input name="itemStock" type="number" placeholder="Stock" className="border p-3 rounded-xl bg-gray-50" required />
+                        <input name="itemPrice" type="number" placeholder="MRP (₹)" className="border p-3 rounded-xl bg-gray-50 text-xs" required />
+                        <input name="itemDiscount" type="number" placeholder="Disc %" className="border p-3 rounded-xl bg-gray-50 text-xs" />
+                        <input name="itemStock" type="number" placeholder="Stock" className="border p-3 rounded-xl bg-gray-50 text-xs" required />
                       </div>
                       <div className="flex justify-between items-center text-xs font-bold p-2 bg-gray-50 rounded-xl">
                         <label><input type="checkbox" name="bestSeller" /> ✨ Best</label>
@@ -403,10 +467,10 @@ export default function App() {
                           {offerTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
                         </select>
                       </div>
-                      <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50" required />
+                      <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50 text-xs" required />
                       <textarea name="itemSpecs" placeholder="Product Specifications & Details" className="border p-3 rounded-xl bg-gray-50 text-xs" rows="2" />
                       
-                      <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50">
+                      <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50 text-xs">
                         {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <button type="submit" className="bg-orange-600 text-white p-4 rounded-xl font-bold">ADD ITEM LIVE</button>
@@ -414,6 +478,7 @@ export default function App() {
 
                     {/* Matrix Controls */}
                     <div className="space-y-2 pt-4 border-t">
+                      <h3 className="text-xs font-black text-gray-400 uppercase">📋 Manage Active Inventory</h3>
                       {products.map(p => (
                         <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
                           <div className="flex justify-between items-center text-xs">
@@ -428,7 +493,7 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                 </>
+                 </div>
                )}
             </div>
           </div>
@@ -513,7 +578,7 @@ export default function App() {
 
                 {/* Profile Node */}
                 <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
-                  <div>
+                  <div className="text-black">
                     {user ? (
                       <>
                         <h4 className="font-extrabold text-sm text-gray-800">{user.displayName}</h4>
@@ -522,6 +587,7 @@ export default function App() {
                     ) : (
                       <>
                         <h4 className="font-extrabold text-sm text-gray-800">Welcome, Guest Grahak</h4>
+                        <p className="text-[10px] text-gray-400 font-bold">Connect your profile for database saving</p>
                       </>
                     )}
                   </div>
@@ -569,7 +635,7 @@ export default function App() {
                     </div>
                   ) : (
                     orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
-                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2 border-l-4 border-l-orange-500">
+                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2 border-l-4 border-l-orange-500 text-black">
                         <div className="flex justify-between text-xs font-black">
                           <span className="text-gray-400">ID: ...{o.id.slice(-6)}</span>
                           <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] shadow-sm font-black border border-emerald-100">{o.status}</span>
@@ -656,7 +722,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 justify-center">
                   <img src={BRAND_LOGO_URL} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
                   <div>
                     <h3 className="text-base font-black uppercase">Daily Needs Hub</h3>
@@ -665,23 +731,22 @@ export default function App() {
                 </div>
 
                 {/* Highly improved Legal & Information mapping grids */}
-                <div className="grid grid-cols-2 gap-4 border-t pt-4 text-xs font-bold text-gray-700">
+                <div className="grid grid-cols-2 gap-4 border-t pt-4 text-xs font-bold text-gray-700 text-center">
                   <div className="space-y-1">
                     <p className="text-[9px] text-gray-400 font-black uppercase">Company Info</p>
-                    <p className="hover:underline cursor-pointer">ℹ️ About Our Hub</p>
-                    <p className="hover:underline cursor-pointer">📞 Contact Support</p>
-                    <p className="hover:underline cursor-pointer">❓ Help & FAQs</p>
+                    <p onClick={() => handleOpenLegal('about')} className="hover:underline cursor-pointer">About Our Hub</p>
+                    <p onClick={() => handleOpenLegal('faq')} className="hover:underline cursor-pointer font-bold">Help & FAQs</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[9px] text-gray-400 font-black uppercase">Legal Protocols</p>
-                    <p className="hover:underline cursor-pointer">🛡️ Privacy Policy</p>
-                    <p className="hover:underline cursor-pointer">🔄 Refund & Returns</p>
-                    <p className="hover:underline cursor-pointer">📜 Terms & Conditions</p>
+                    <p onClick={() => handleOpenLegal('privacy')} className="hover:underline cursor-pointer">Privacy Policy</p>
+                    <p onClick={() => handleOpenLegal('refund')} className="hover:underline cursor-pointer">Refund & Returns</p>
+                    <p onClick={() => handleOpenLegal('terms')} className="hover:underline cursor-pointer">Terms & Conditions</p>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Follow With Us</p>
+                <div className="space-y-2 flex flex-col items-center">
+                  <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase text-center">Follow With Us</p>
                   <div className="flex gap-4">
                     <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">
                       <span>🌐</span> Facebook Official
@@ -692,12 +757,13 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="space-y-1 text-xs text-gray-600 font-bold border-t pt-2">
+                <div className="space-y-1 text-xs text-gray-600 font-bold border-t pt-2 text-center">
                   <p>📞 Helpline: <a href="tel:+918637589429" className="text-emerald-600 underline">+91 8637589429</a></p>
                   <p>✉️ Mail desk: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline">dailyneedshub@gmail.com</a></p>
                 </div>
 
-                <div className="text-[10px] font-extrabold text-gray-400 pt-2 border-t">
+                {/* Centered Address as requested (Point 4) */}
+                <div className="text-[10px] font-extrabold text-gray-400 pt-2 border-t text-center leading-relaxed">
                   📍 Bolpur to Palitpur Road, Near Al Ameen Mission, Papuri, Nanoor, Birbhum, West Bengal, 731240
                 </div>
               </footer>
@@ -736,7 +802,7 @@ export default function App() {
                 <button onClick={() => setIsCartOpen(false)} className="text-xs font-bold text-gray-400 border p-1 rounded-lg">Close X</button>
               </div>
               <div className="space-y-3 mb-6">
-                <input placeholder="Customer Full Name *" value={custInfo.name} className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
+                <input placeholder="Customer Full Name *" value={custInfo.name} className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold text-black" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
                 <div className="p-3 bg-amber-50 rounded-xl text-[10px] font-bold text-amber-800 border border-amber-200">
                   ⚠️ Deliveries are tracked natively via configurations filled inside the Account tab profile fields.
                 </div>
@@ -865,10 +931,10 @@ export default function App() {
         <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">
             
-            {/* Professional Invoice Corporate Header */}
+            {/* Daily Needs Hub Header Fixed (Point 3) */}
             <div className="text-center border-b-2 border-dashed border-gray-200 pb-3 space-y-0.5">
-              <h2 className="text-xl font-black uppercase tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-emerald-600">
-                Daily Needs Hub
+              <h2 className="text-2xl font-black uppercase tracking-tight text-orange-600">
+                DAILY NEEDS HUB
               </h2>
               <p className="text-[9px] font-bold text-gray-500 uppercase">Premium Retail Cash Memo</p>
               <p className="text-[9px] text-gray-400 font-medium">📍 Papuri, Nanoor, Birbhum, WB, 731240</p>
@@ -892,7 +958,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Verified Universal App Intent UPI Integration (Point 9) */}
+            {/* Verified Universal App Intent UPI Integration */}
             <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
               <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ SECURE UPI TRANSACTION GATEWAY</span>
               <p className="text-[10px] text-gray-600 font-bold leading-tight">Universal Payment link auto-detects PhonePe, Google Pay, Paytm & BHIM instantly.</p>
@@ -905,7 +971,7 @@ export default function App() {
                 />
               </div>
 
-              {/* Standard multi-compatible cross platform anchor link */}
+              {/* Universal Deep Link */}
               <a 
                 href={`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`}
                 className="block bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center"
@@ -930,7 +996,7 @@ export default function App() {
               <span className="text-base font-black">₹{cartTotal}</span>
             </div>
 
-            {/* Professional Sales Manager Digital Sign (Point 13) */}
+            {/* Professional Sales Manager Digital Sign */}
             <div className="border-t pt-3 flex flex-col items-end">
               <div className="text-center space-y-0.5 pr-2">
                 <p className="font-serif italic text-sm font-bold text-indigo-700 tracking-wide selection:bg-none">
@@ -951,6 +1017,22 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Dynamic Legal Content Modals (Point 5) */}
+      {legalModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-black border shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black text-sm text-orange-600">{legalModal.title}</h3>
+              <button onClick={() => setLegalModal({ isOpen: false, title: '', content: '' })} className="text-xs bg-gray-100 px-2.5 py-1 rounded-lg font-bold">Close X</button>
+            </div>
+            <p className="text-xs text-gray-700 leading-relaxed font-semibold whitespace-pre-line bg-gray-50 p-4 rounded-2xl border border-gray-100 max-h-[50vh] overflow-y-auto">
+              {legalModal.content}
+            </p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

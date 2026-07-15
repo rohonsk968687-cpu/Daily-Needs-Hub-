@@ -21,7 +21,7 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
-const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack"];
+const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack", "Flash Sale"];
 const BRAND_LOGO_URL = "/logo.png"; 
 const MY_UPI_ID = "8637589429-3@ybl"; 
 
@@ -29,26 +29,41 @@ export default function App() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]); 
   const [cart, setCart] = useState([]);
+  const [wishlist, setWishlist] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [activeTab, setActiveTab] = useState("shop"); // 'shop' acts as Home now
+  const [activeTab, setActiveTab] = useState("shop"); // 'shop' acts as Home/Shop
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState("");
   const [darkMode, setDarkMode] = useState(false);
-  const [custInfo, setCustInfo] = useState({ name: '', address: '', landmark: '', vill: '', pin: '' });
+  
+  // Flash Sale Timer (1 hour initial value)
+  const [flashTime, setFlashTime] = useState(3600); 
+
+  const [custInfo, setCustInfo] = useState({ 
+    name: '', 
+    vill: '', 
+    landmark: '', 
+    pin: '' 
+  });
   
   const [slides, setSlides] = useState([
-    { id: 1, img: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&q=80", text: "⚡ SUMMER SPECIAL SALE: Min 10% OFF!" },
+    { id: 1, img: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&q=80", text: "⚡ FLASH SALE LIVE: Grab Offers Instantly!" },
     { id: 2, img: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&q=80", text: "🥤 COLD DRINKS & BEVERAGES: Garmi ka Ilaaj" },
     { id: 3, img: "https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=500&q=80", text: "🛒 GROCERY ESSENTIALS: Fresh Stock Everyday" },
     { id: 4, img: "https://images.unsplash.com/photo-1506084868230-bb9d95c24759?w=500&q=80", text: "🥛 FRESH DAIRY PRODUCTS: Delivery at Doorstep" },
     { id: 5, img: "https://images.unsplash.com/photo-1543168256-418811576931?w=500&q=80", text: "🥬 FARM FRESH VEGETABLES: 100% Organic" }
   ]);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [currentProductSlide, setCurrentProductSlide] = useState(0);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -66,6 +81,10 @@ export default function App() {
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
     }, 4000);
+
+    const flashTimer = setInterval(() => {
+      setFlashTime(prev => (prev > 0 ? prev - 1 : 3600));
+    }, 1000);
     
     const qProd = query(collection(db, "products"), orderBy("name"));
     const unsubProd = onSnapshot(qProd, (snapshot) => {
@@ -77,7 +96,27 @@ export default function App() {
       setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => { clearInterval(timer); unsubProd(); unsubOrder(); unsubscribeAuth(); };
+    const qNotif = collection(db, "notifications");
+    const unsubNotif = onSnapshot(qNotif, (snapshot) => {
+      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // Check LocalStorage for Saved Address
+    const savedAddr = localStorage.getItem("dnh_saved_address");
+    if (savedAddr) {
+      try {
+        setCustInfo(JSON.parse(savedAddr));
+      } catch (e) { console.log(e); }
+    }
+
+    return () => { 
+      clearInterval(timer); 
+      clearInterval(flashTimer);
+      unsubProd(); 
+      unsubOrder(); 
+      unsubNotif();
+      unsubscribeAuth(); 
+    };
   }, [slides.length]);
 
   const handleGoogleLogin = async () => {
@@ -98,6 +137,12 @@ export default function App() {
     alert("Logged out!");
   };
 
+  const saveAddressToLocal = () => {
+    if (!custInfo.vill || !custInfo.pin) return alert("Village aur PIN Code zaroori hain!");
+    localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
+    alert("Address saved successfully inside mobile dashboard!");
+  };
+
   const getDiscountedPrice = (price, discount) => {
     if (!discount || discount <= 0) return price;
     return Math.round(price - (price * discount) / 100);
@@ -114,28 +159,44 @@ export default function App() {
     }
   };
 
-  const removeFromCart = (p) => {
-    const exist = cart.find(x => x.id === p.id);
-    if (!exist) return;
-    if (exist.qty === 1) {
-      setCart(cart.filter(x => x.id !== p.id));
+  const updateCartQty = (id, delta) => {
+    const item = cart.find(x => x.id === id);
+    if (!item) return;
+    const nextQty = item.qty + delta;
+    if (nextQty <= 0) {
+      setCart(cart.filter(x => x.id !== id));
     } else {
-      setCart(cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty - 1 } : x));
+      if (delta > 0 && nextQty > item.stock) return alert("Stock limit exceeded!");
+      setCart(cart.map(x => x.id === id ? { ...item, qty: nextQty } : x));
+    }
+  };
+
+  const toggleWishlist = (p) => {
+    const exist = wishlist.find(x => x.id === p.id);
+    if (exist) {
+      setWishlist(wishlist.filter(x => x.id !== p.id));
+    } else {
+      setWishlist([...wishlist, p]);
     }
   };
 
   const addProduct = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
+    
+    // Multiple images separated by commas
+    const imgArray = el.itemImg.value.split(",").map(url => url.trim());
+
     try {
       await addDoc(collection(db, "products"), { 
         name: el.itemName.value, 
         price: Number(el.itemPrice.value), 
         stock: Number(el.itemStock.value),
         discount: Number(el.itemDiscount.value) || 0, 
-        img: el.itemImg.value || "📦", 
+        images: imgArray.length > 0 && imgArray[0] !== "" ? imgArray : ["📦"], 
         category: el.itemCategory.value,
         offerTag: el.itemOfferTag.value || "None",
+        specifications: el.itemSpecs.value || "No specifications loaded.",
         isBestSeller: el.bestSeller.checked,
         isNewArrival: el.newArrival.checked
       });
@@ -144,6 +205,20 @@ export default function App() {
     } catch (error) {
       alert("Database error!");
     }
+  };
+
+  const sendBroadcastNotification = async (e) => {
+    e.preventDefault();
+    const text = e.target.elements.notifText.value;
+    if(!text) return;
+    try {
+      await addDoc(collection(db, "notifications"), {
+        message: text,
+        createdAt: new Date().toLocaleTimeString()
+      });
+      e.target.reset();
+      alert("Notification Broadcasted Live!");
+    } catch(err) { alert("Error broadcasting notification"); }
   };
 
   const updateProductData = async (id, field, value) => {
@@ -159,18 +234,15 @@ export default function App() {
     alert("Order status updated successfully!");
   };
 
-  const updateSlideUrl = (index, url) => {
-    const updated = [...slides];
-    updated[index].img = url;
-    setSlides(updated);
-    alert(`Banner ${index + 1} updated!`);
-  };
-
   const cartTotal = cart.reduce((a, c) => a + getDiscountedPrice(c.price, c.discount) * c.qty, 0);
   
+  // Advanced Filter Engine
   const filtered = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
     if (activeTab === "offers") {
+      if (selectedOfferFilter === "Flash Sale") {
+        return matchesSearch && p.offerTag === "Flash Sale";
+      }
       const isOfferItem = p.offerTag && p.offerTag !== "None";
       const matchesOfferFilter = selectedOfferFilter === "All" || p.offerTag === selectedOfferFilter;
       return matchesSearch && isOfferItem && matchesOfferFilter;
@@ -211,6 +283,13 @@ export default function App() {
     setIsCartOpen(false);
   };
 
+  const formatTimer = (time) => {
+    const hrs = Math.floor(time / 3600);
+    const mins = Math.floor((time % 3600) / 60);
+    const secs = time % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const getCategoryEmoji = (cat) => {
     switch(cat) {
       case 'All': return '🛍️';
@@ -225,28 +304,32 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-amber-50/60 via-white to-emerald-50/60 text-gray-900'} pb-32 transition-all duration-500 font-sans`}>
       
-      {/* Header with Header-Login & DarkMode */}
+      {/* Header View */}
       <header className="p-3 bg-white/95 backdrop-blur-md shadow-md sticky top-0 z-40 flex justify-between items-center border-b border-orange-100">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <img src={BRAND_LOGO_URL} alt="Daily Needs Hub Logo" className="w-12 h-12 object-contain rounded-xl shadow-sm bg-orange-50 p-0.5 border border-orange-100" />
+        <div className="flex items-center gap-3 min-w-0 flex-1" onClick={() => setActiveTab("shop")}>
+          <img src={BRAND_LOGO_URL} alt="Logo" className="w-12 h-12 object-contain rounded-xl shadow-sm bg-orange-50 p-0.5" />
           <div className="flex flex-col items-start min-w-0">
-            <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-emerald-600 to-blue-600 tracking-tight font-sans uppercase leading-none">
+            <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-emerald-600 to-blue-600 tracking-tight uppercase leading-none">
               Daily Needs Hub
             </h1>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2.5 flex-shrink-0">
+           <button onClick={() => setIsNotifOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs relative">
+             🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{notifications.length}</span>}
+           </button>
+           <button onClick={() => setIsWishlistOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs">❤️</button>
            {!user && (
-             <button onClick={handleGoogleLogin} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-md transition-all active:scale-95">
+             <button onClick={handleGoogleLogin} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[11px] font-black px-3 py-1.5 rounded-xl shadow-md">
                Login
              </button>
            )}
-           <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs shadow-inner">{darkMode ? '☀️' : '🌙'}</button>
+           <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs">{darkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
 
       <div className="max-w-md mx-auto">
-        {/* Search Bar (Only on Home tab) */}
+        {/* Search Bar Container */}
         {activeTab === "shop" && (
           <div className="p-4">
             <input 
@@ -262,12 +345,26 @@ export default function App() {
             <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
                <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Central Dashboard</h2>
                {!isAdmin ? (
-                 <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'Younus@968687' && setIsAdmin(true)} />
+                 <input type="password" placeholder="Enter Protected Password" className="border p-3 w-full rounded-xl text-center" onChange={(e) => e.target.value === 'Younus@968687' && setIsAdmin(true)} />
                ) : (
                  <>
+                    {/* Sales Analytics Monitor */}
+                    <div className="bg-gradient-to-br from-gray-900 to-slate-800 p-5 rounded-2xl text-white space-y-1 shadow-md">
+                      <p className="text-[10px] tracking-wider uppercase opacity-60 font-bold">Total Gross Sales Volume</p>
+                      <h3 className="text-3xl font-black text-emerald-400">₹{totalSales}</h3>
+                      <p className="text-[9px] opacity-50">Calculated across {orders.length} processing records</p>
+                    </div>
+
+                    {/* Notification Broadcast Node */}
+                    <form onSubmit={sendBroadcastNotification} className="bg-yellow-50/60 p-4 rounded-2xl border border-yellow-200 space-y-2">
+                      <h3 className="text-xs font-black text-yellow-800 uppercase">📢 Push Broadcast Notification</h3>
+                      <input name="notifText" placeholder="Kya alert bhejna chahte hain?" className="w-full p-2 text-xs border bg-white rounded-lg" required />
+                      <button type="submit" className="w-full bg-yellow-600 text-white font-bold p-2 text-xs rounded-lg">Send App Notification</button>
+                    </form>
+
                     {/* Live Incoming Orders Room */}
                     <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 space-y-3">
-                      <h3 className="text-xs font-black text-blue-800">📦 CUSTOMER INCOMING ORDERS ROOM ({orders.length})</h3>
+                      <h3 className="text-xs font-black text-blue-800">📦 CUSTOMER ORDERS ROOM ({orders.length})</h3>
                       {orders.map(ord => (
                         <div key={ord.id} className="p-3 bg-white rounded-xl text-xs space-y-1 shadow-sm border">
                           <p><b>Grahak Name:</b> {ord.customerName}</p>
@@ -291,17 +388,7 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Banner Manage */}
-                    <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 space-y-3">
-                      <h3 className="text-xs font-bold text-orange-700">⚙️ Manage 5 Dynamic Banners</h3>
-                      {slides.map((s, index) => (
-                        <div key={s.id} className="space-y-1">
-                          <input type="text" className="w-full p-2 text-xs border rounded-lg bg-white" defaultValue={s.img} onBlur={(e) => updateSlideUrl(index, e.target.value)} />
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Add Item Form */}
+                    {/* Add Item Form Engine */}
                     <form onSubmit={addProduct} className="grid gap-3">
                       <input name="itemName" placeholder="Item Name" className="border p-3 rounded-xl bg-gray-50" required />
                       <div className="grid grid-cols-3 gap-2">
@@ -316,14 +403,16 @@ export default function App() {
                           {offerTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
                         </select>
                       </div>
-                      <input name="itemImg" placeholder="Image Link / Emoji" className="border p-3 rounded-xl bg-gray-50" required />
+                      <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50" required />
+                      <textarea name="itemSpecs" placeholder="Product Specifications & Details" className="border p-3 rounded-xl bg-gray-50 text-xs" rows="2" />
+                      
                       <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50">
                         {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <button type="submit" className="bg-orange-600 text-white p-4 rounded-xl font-bold">ADD ITEM LIVE</button>
                     </form>
 
-                    {/* List Management controls */}
+                    {/* Matrix Controls */}
                     <div className="space-y-2 pt-4 border-t">
                       {products.map(p => (
                         <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
@@ -344,19 +433,32 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* User Layout */
+          /* Customer Layout System */
           <>
             {activeTab === "shop" && (
               <>
                 <div className="px-4 mb-4">
                   <div className="bg-gradient-to-r from-orange-500 via-emerald-500 to-blue-600 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
-                    {/* Welcome statement showing name when login is done */}
                     <h2 className="text-2xl font-black mb-1">Hello, {user?.displayName || "Guest Grahak"}! 👋</h2>
                     <p className="text-xs opacity-90 italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
                   </div>
                 </div>
 
-                {/* Slider */}
+                {/* Flash Sale Banner Module */}
+                <div className="px-4 mb-4">
+                  <div className="bg-gradient-to-r from-red-600 to-pink-600 p-4 rounded-2xl text-white flex justify-between items-center shadow-lg">
+                    <div>
+                      <span className="bg-white text-red-600 text-[9px] px-2 py-0.5 rounded-full font-black uppercase">🔥 Flash Deal</span>
+                      <h4 className="text-sm font-black mt-1">Super Saving Hour Active</h4>
+                    </div>
+                    <div className="text-right font-mono bg-black/30 px-3 py-1.5 rounded-xl border border-white/20">
+                      <p className="text-[8px] uppercase tracking-wider text-red-200">Ends In</p>
+                      <p className="text-sm font-black text-yellow-300">{formatTimer(flashTime)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Main Promos Slider */}
                 <div className="px-4 mb-4">
                   <div className="relative h-44 w-full overflow-hidden rounded-3xl shadow-xl border-2 border-white bg-gray-100">
                     {slides.map((s, idx) => (
@@ -394,22 +496,22 @@ export default function App() {
                   <h2 className="text-2xl font-black mb-1">⚡ SPECIAL OFFERS ZONE</h2>
                 </div>
                 <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
-                  {["All", "Today's Deal", "Buy 2 Get 1", "Combo Pack"].map(tag => (
-                    <button key={tag} onClick={() => setSelectedOfferFilter(tag)} className={`px-4 py-2 rounded-full text-xs font-bold border-2 ${selectedOfferFilter === tag ? 'bg-red-500 text-white' : 'bg-white text-gray-500'}`}>{tag}</button>
+                  {["All", "Today's Deal", "Buy 2 Get 1", "Combo Pack", "Flash Sale"].map(tag => (
+                    <button key={tag} onClick={() => setSelectedOfferFilter(tag)} className={`px-4 py-2 rounded-full text-xs font-bold border-2 transition-all ${selectedOfferFilter === tag ? 'bg-red-500 text-white border-red-500' : 'bg-white text-gray-500 border-gray-100'}`}>{tag}</button>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Account Tab with deep address control logic */}
+            {/* Account Dashboard Tab Engine */}
             {activeTab === "account" && (
               <div className="px-4 space-y-6">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
-                  <h2 className="text-xl font-black">👤 My Account Dashboard</h2>
-                  <p className="text-xs opacity-80">Profile details and location metrics storage</p>
+                  <h2 className="text-xl font-black">👤 Account Hub</h2>
+                  <p className="text-xs opacity-80">Profile configurations & saved logistics</p>
                 </div>
 
-                {/* Google Connection Node */}
+                {/* Profile Node */}
                 <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
                   <div>
                     {user ? (
@@ -420,7 +522,6 @@ export default function App() {
                     ) : (
                       <>
                         <h4 className="font-extrabold text-sm text-gray-800">Welcome, Guest Grahak</h4>
-                        <p className="text-[10px] text-gray-400 font-bold">Sign-in to save absolute track metrics</p>
                       </>
                     )}
                   </div>
@@ -431,46 +532,40 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Address Configuration Form Module */}
+                {/* Saved Address Panel Module */}
                 <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
-                  <h3 className="font-black text-sm text-gray-800 border-b pb-2">📍 Manage Shipping Address</h3>
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase">Village / City Name *</label>
-                      <input 
-                        type="text" placeholder="Enter Village / Town name" 
-                        value={custInfo.vill}
-                        className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50/50 text-xs font-semibold text-black mt-1"
-                        onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase">Famous Landmark</label>
-                      <input 
-                        type="text" placeholder="Near school, temple, mission etc." 
-                        value={custInfo.landmark}
-                        className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50/50 text-xs font-semibold text-black mt-1"
-                        onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase">PIN Code *</label>
-                      <input 
-                        type="number" placeholder="6 Digit PIN code" 
-                        value={custInfo.pin}
-                        className="w-full p-3 border border-gray-200 rounded-xl bg-gray-50/50 text-xs font-semibold text-black mt-1"
-                        onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})}
-                      />
-                    </div>
+                  <div className="flex justify-between items-center border-b pb-2">
+                    <h3 className="font-black text-sm text-gray-800">📍 Saved Shipping Address</h3>
+                    <button onClick={saveAddressToLocal} className="text-[10px] bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg border font-black uppercase">Save Permanent</button>
+                  </div>
+                  <div className="space-y-2 text-black">
+                    <input 
+                      type="text" placeholder="Village / City Name *" 
+                      value={custInfo.vill}
+                      className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
+                      onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})}
+                    />
+                    <input 
+                      type="text" placeholder="Famous Landmark / Building" 
+                      value={custInfo.landmark}
+                      className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
+                      onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})}
+                    />
+                    <input 
+                      type="number" placeholder="6-Digit Area PIN Code *" 
+                      value={custInfo.pin}
+                      className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
+                      onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})}
+                    />
                   </div>
                 </div>
 
-                {/* Status Tracker */}
+                {/* My Orders Live Tracking Inner Box */}
                 <div className="space-y-3">
-                  <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 Live Orders Status Tracker</h3>
+                  <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 My Orders Tracking System</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
                     <div className="p-6 text-center bg-white/40 border border-dashed rounded-2xl text-xs font-bold text-gray-400">
-                      Koi active order ya purchase receipt nahi mili.
+                      Koi active order record nahi mila.
                     </div>
                   ) : (
                     orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
@@ -493,39 +588,51 @@ export default function App() {
               </div>
             )}
 
-            {/* Main Product Grid Engine (Hide in Category & Account Tabs) */}
+            {/* Main Grid Module View */}
             {activeTab !== "categories" && activeTab !== "account" && (
               <main className="p-4 grid grid-cols-2 gap-4">
                 {filtered.map(p => {
                   const hasDiscount = p.discount > 0;
                   const finalPrice = getDiscountedPrice(p.price, p.discount);
-                  const cartItem = cart.find(x => x.id === p.id);
+                  const isWish = wishlist.find(x => x.id === p.id);
+                  const pImages = p.images || [p.img || "📦"];
                   return (
-                    <div key={p.id} className="bg-white p-3 rounded-[2rem] shadow-md border-2 border-orange-100/60 relative flex flex-col justify-between">
-                       <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
+                    <div key={p.id} className="bg-white p-3 rounded-[2rem] shadow-md border-2 border-orange-100/60 relative flex flex-col justify-between text-black">
+                       <div className="absolute top-3 left-3 Combined-Node z-10 flex flex-col gap-1">
                           {p.offerTag && p.offerTag !== "None" && <span className="bg-emerald-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{p.offerTag}</span>}
                           {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">{p.discount}% OFF</span>}
                        </div>
-                       <div className="h-32 flex items-center justify-center mb-3 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden">
-                         {p.img.includes('http') ? <img src={p.img} alt="product" className="h-full w-full object-cover rounded-2xl" /> : <span className="text-5xl">{p.img}</span>}
+                       
+                       {/* Wishlist Button Logo */}
+                       <button onClick={() => toggleWishlist(p)} className="absolute top-3 right-3 z-10 p-1.5 bg-white/80 backdrop-blur-sm rounded-full shadow-sm text-xs">
+                         {isWish ? "❤️" : "🤍"}
+                       </button>
+
+                       {/* Interactive Image Slide Trigger */}
+                       <div onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="h-32 flex items-center justify-center mb-2 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden cursor-pointer">
+                         {pImages[0].includes('http') ? <img src={pImages[0]} alt="product" className="h-full w-full object-cover rounded-2xl" /> : <span className="text-5xl">{pImages[0]}</span>}
                        </div>
-                       <div className="px-1 text-center">
-                         <h3 className="font-extrabold text-gray-800 text-sm truncate">{p.name}</h3>
-                         <div className="flex items-center justify-center gap-2 mt-1">
-                           <span className="text-lg font-black text-orange-600">₹{finalPrice}</span>
-                           {hasDiscount && <span className="text-xs text-gray-400 line-through font-bold">₹{p.price}</span>}
+
+                       <div className="px-1 text-center flex-1 flex flex-col justify-between">
+                         <div>
+                           <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="font-extrabold text-gray-800 text-xs truncate cursor-pointer underline">{p.name}</h3>
+                           <div className="flex items-center justify-center gap-2 mt-0.5">
+                             <span className="text-base font-black text-orange-600">₹{finalPrice}</span>
+                             {hasDiscount && <span className="text-[10px] text-gray-400 line-through font-bold">₹{p.price}</span>}
+                           </div>
                          </div>
-                         <div className="mt-2.5">
+                         <div className="mt-2 space-y-1">
                            {p.stock <= 0 ? (
-                             <button disabled className="w-full py-2 bg-gray-200 text-gray-400 rounded-xl text-xs font-bold">OUT</button>
-                           ) : cartItem ? (
-                             <div className="flex items-center justify-between bg-gradient-to-r from-orange-500 to-emerald-500 rounded-xl text-white p-1 font-black">
-                               <button onClick={() => removeFromCart(p)} className="px-2 text-sm">-</button>
-                               <span className="text-xs">{cartItem.qty}</span>
-                               <button onClick={() => addToCart(p)} className="px-2 text-sm">+</button>
-                             </div>
+                             <button disabled className="w-full py-1.5 bg-gray-200 text-gray-400 rounded-xl text-[10px] font-bold">OUT OF STOCK</button>
                            ) : (
-                             <button onClick={() => addToCart(p)} className="w-full py-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white font-black rounded-xl text-xs">ADD TO BAG</button>
+                             <>
+                               <button onClick={() => { addToCart(p); alert("Added to cart drawer!"); }} className="w-full py-1.5 bg-gray-100 text-gray-700 font-extrabold rounded-xl text-[10px] border border-gray-200 shadow-sm active:scale-95 transition-all">
+                                 ADD TO CART
+                               </button>
+                               <button onClick={() => { addToCart(p); setIsCartOpen(true); }} className="w-full py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black rounded-xl text-[10px] shadow-sm active:scale-95 transition-all">
+                                 ORDER NOW
+                               </button>
+                             </>
                            )}
                          </div>
                        </div>
@@ -535,48 +642,69 @@ export default function App() {
               </main>
             )}
 
-            {/* Footer System (Strictly visible ONLY on Home/Shop tab) */}
+            {/* Footer Engineering Architecture (Strictly on Home/Shop) */}
             {activeTab === "shop" && (
               <footer className="mx-4 my-8 pt-6 text-gray-800 space-y-6 mb-28 border-t border-gray-200/60">
+                {/* Why Choose Us additions */}
+                <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-100 text-black">
+                  <h4 className="text-xs font-black text-emerald-800 uppercase tracking-wider mb-2 text-center">🏆 Why Choose Daily Needs Hub</h4>
+                  <div className="grid grid-cols-2 gap-3 text-[10px] font-bold">
+                    <div className="flex items-center gap-1">⚡ <span><b>Fast Delivery:</b> Seedha aapke ghar tak fast shipping</span></div>
+                    <div className="flex items-center gap-1">💰 <span><b>Best Price:</b> Subse sasta rate market se kam</span></div>
+                    <div className="flex items-center gap-1">🛡️ <span><b>Secure Payment:</b> Verified Instant UPI Engine</span></div>
+                    <div className="flex items-center gap-1">⏰ <span><b>24x7 Support:</b> Hamesha aapki sewa me tayaar</span></div>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-3">
                   <img src={BRAND_LOGO_URL} alt="Logo" className="w-10 h-10 object-contain rounded-lg" />
                   <div>
                     <h3 className="text-base font-black uppercase">Daily Needs Hub</h3>
-                    <p className="text-[9px] text-gray-400 font-bold tracking-widest uppercase">Everyday Needs, Delivered Fast</p>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Everyday Needs, Delivered Fast</p>
                   </div>
                 </div>
+
+                {/* Highly improved Legal & Information mapping grids */}
+                <div className="grid grid-cols-2 gap-4 border-t pt-4 text-xs font-bold text-gray-700">
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-gray-400 font-black uppercase">Company Info</p>
+                    <p className="hover:underline cursor-pointer">ℹ️ About Our Hub</p>
+                    <p className="hover:underline cursor-pointer">📞 Contact Support</p>
+                    <p className="hover:underline cursor-pointer">❓ Help & FAQs</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-gray-400 font-black uppercase">Legal Protocols</p>
+                    <p className="hover:underline cursor-pointer">🛡️ Privacy Policy</p>
+                    <p className="hover:underline cursor-pointer">🔄 Refund & Returns</p>
+                    <p className="hover:underline cursor-pointer">📜 Terms & Conditions</p>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Follow With Us</p>
                   <div className="flex gap-4">
-                    {/* Original styled brand indicators */}
-                    <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
-                      <span>🌐</span> Facebook
+                    <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">
+                      <span>🌐</span> Facebook Official
                     </a>
-                    <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-2.5 py-1 rounded-lg border border-pink-100">
-                      <span>📸</span> Instagram
-                    </a>
-                    <a href="https://youtube.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-lg border border-red-100">
-                      <span>📺</span> YouTube
+                    <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-100 shadow-sm">
+                      <span>📸</span> Instagram Connect
                     </a>
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <div className="text-xs font-bold text-gray-600 space-y-2">
-                    <p>📞 Mobile: <a href="tel:+918637589429" className="text-emerald-600 underline">+91 8637589429</a></p>
-                    <p>✉️ Email: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline">dailyneedshub@gmail.com</a></p>
-                    {/* Legal additions */}
-                    <p>☎️ Contact Us: <span className="text-blue-600 underline cursor-pointer">Get Support Call</span></p>
-                    <p>🛡️ Privacy Protection: <span className="text-gray-500 underline cursor-pointer">Privacy Policy & Terms</span></p>
-                  </div>
+
+                <div className="space-y-1 text-xs text-gray-600 font-bold border-t pt-2">
+                  <p>📞 Helpline: <a href="tel:+918637589429" className="text-emerald-600 underline">+91 8637589429</a></p>
+                  <p>✉️ Mail desk: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline">dailyneedshub@gmail.com</a></p>
                 </div>
-                <div className="text-xs font-extrabold text-gray-500 pt-2 border-t">
+
+                <div className="text-[10px] font-extrabold text-gray-400 pt-2 border-t">
                   📍 Bolpur to Palitpur Road, Near Al Ameen Mission, Papuri, Nanoor, Birbhum, West Bengal, 731240
                 </div>
               </footer>
             )}
 
-            {/* Navigation Bar with Home icon update */}
-            <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-xl">
+            {/* Bottom Nav System */}
+            <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-40 flex justify-around items-center rounded-t-[2rem] shadow-xl text-black">
               <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🏠</span><span className="text-[10px]">Home</span>
               </button>
@@ -590,7 +718,7 @@ export default function App() {
                 <span className="text-lg">👤</span><span className="text-[10px]">Account</span>
               </button>
               <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white rounded-2xl px-2.5 py-1 shadow-md">
-                <span className="text-[10px] font-black">🛍️ Bag</span>
+                <span className="text-[10px] font-black">🛒 Cart</span>
                 <span className="text-[9px]">₹{cartTotal}</span>
               </button>
             </div>
@@ -598,75 +726,228 @@ export default function App() {
         )}
       </div>
 
-      {/* Cart Drawer Panel */}
+      {/* Cart Engine Model Sheet */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
-          <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black">
-            {!showInvoice ? (
-              <>
-                <h2 className="text-xl font-black mb-6">Aapka Bag</h2>
-                <div className="space-y-3 mb-6">
-                  <input placeholder="Aapka Naam" value={custInfo.name} className="w-full p-3 border border-orange-100 rounded-xl bg-gray-50 text-sm text-black font-bold" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
-                  
-                  <div className="p-3 bg-blue-50/50 border rounded-xl text-xs font-bold text-blue-900">
-                    ℹ️ Order address will be processed from your Account Tab settings configuration directly.
-                  </div>
-                </div>
-                {cart.map((item, idx) => (
-                  <div key={idx} className="flex justify-between py-3 border-b text-xs items-center">
-                    <span className="font-extrabold text-gray-800">{item.name} (x{item.qty})</span>
-                    <span className="font-black text-orange-600">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</span>
-                  </div>
-                ))}
-                <div className="mt-8">
-                  <div className="flex justify-between text-2xl font-black mb-6 text-emerald-600"><span>Total:</span><span>₹{cartTotal}</span></div>
-                  <button onClick={handleCheckoutInit} className="w-full bg-gradient-to-r from-orange-500 to-emerald-500 text-white py-4 rounded-2xl font-black text-lg mb-2 shadow-lg">Proceed to Payment</button>
-                  <button onClick={() => setIsCartOpen(false)} className="w-full py-2 text-gray-400 text-xs text-center font-bold">CLOSE</button>
-                </div>
-              </>
-            ) : (
-              <div className="pt-2 space-y-4">
-                <div className="text-center">
-                  <span className="text-3xl">📝</span>
-                  <h2 className="text-md font-black text-orange-600 uppercase">Verify Bill & Pay</h2>
-                </div>
-
-                <div className="p-4 bg-orange-50/50 border-2 border-dashed border-orange-200 rounded-2xl text-center space-y-3 shadow-inner">
-                  <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black">⚡ INSTANT UPI PAYMENT</span>
-                  <p className="text-[11px] text-gray-600 font-bold">Scan QR code using Google Pay, PhonePe or Paytm</p>
-                  
-                  <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
-                      alt="UPI QR Payment" 
-                      className="w-36 h-36 mx-auto object-contain" 
-                    />
-                  </div>
-
-                  <a 
-                    href={`intent://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR#Intent;scheme=upi;package=in.org.npci.upiapp;end`}
-                    className="block bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all"
-                  >
-                    🚀 Pay via Mobile UPI App
-                  </a>
-                </div>
-
-                <div className="border border-orange-100 rounded-2xl p-4 bg-gray-50/30 text-[11px] font-bold text-gray-700 space-y-2 shadow-sm">
-                  <p className="border-b pb-1 text-center font-black text-gray-800 text-xs uppercase">Retail Cash Memo</p>
-                  <p><b>Order ID:</b> {currentOrderId}</p>
-                  <p><b>Grahak:</b> {custInfo.name}</p>
-                  <p><b>Vill & Pin Details:</b> {custInfo.vill} (PIN: {custInfo.pin})</p>
-                  <p className="border-t pt-1 flex justify-between text-orange-600 font-black text-xs"><span>Total Amount:</span><span>₹{cartTotal}</span></p>
-                </div>
-
-                <button 
-                  onClick={sendWhatsAppNotification} 
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-4 rounded-2xl font-black shadow-md text-sm text-center tracking-wide uppercase"
-                >
-                  ✅ Send Order Details to WhatsApp
-                </button>
+          <div className="w-full max-w-sm bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black flex flex-col justify-between">
+            <div>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-black text-orange-600">Shopping Cart Drawer</h2>
+                <button onClick={() => setIsCartOpen(false)} className="text-xs font-bold text-gray-400 border p-1 rounded-lg">Close X</button>
               </div>
+              <div className="space-y-3 mb-6">
+                <input placeholder="Customer Full Name *" value={custInfo.name} className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
+                <div className="p-3 bg-amber-50 rounded-xl text-[10px] font-bold text-amber-800 border border-amber-200">
+                  ⚠️ Deliveries are tracked natively via configurations filled inside the Account tab profile fields.
+                </div>
+              </div>
+
+              {/* Advanced Cart Increment / Decrement System */}
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+                {cart.length === 0 ? (
+                  <p className="text-xs text-center text-gray-400 font-bold py-10">Aapka cart khali hai bhai!</p>
+                ) : (
+                  cart.map((item, index) => (
+                    <div key={index} className="flex justify-between items-center py-2.5 border-b text-xs">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-extrabold text-gray-800 truncate">{item.name}</p>
+                        <p className="text-[10px] text-orange-500 font-bold">₹{getDiscountedPrice(item.price, item.discount)} / unit</p>
+                      </div>
+                      <div className="flex items-center gap-2.5 ml-4">
+                        <button onClick={() => updateCartQty(item.id, -1)} className="w-6 h-6 bg-gray-100 border text-gray-800 rounded-lg flex items-center justify-center font-black text-sm active:bg-gray-200">-</button>
+                        <span className="font-black text-sm w-4 text-center">{item.qty}</span>
+                        <button onClick={() => updateCartQty(item.id, 1)} className="w-6 h-6 bg-gray-100 border text-gray-800 rounded-lg flex items-center justify-center font-black text-sm active:bg-gray-200">+</button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 border-t pt-4">
+              <div className="flex justify-between text-xl font-black mb-4 text-emerald-600"><span>Grand Total:</span><span>₹{cartTotal}</span></div>
+              <button onClick={handleCheckoutInit} className="w-full bg-gradient-to-r from-orange-500 to-emerald-500 text-white py-3.5 rounded-2xl font-black text-base shadow-lg active:scale-95 transition-all">
+                Proceed to Checkout Receipt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Deep View Slideshow & Details Sheet */}
+      {selectedProduct && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 text-black overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black text-sm truncate">{selectedProduct.name}</h3>
+              <button onClick={() => setSelectedProduct(null)} className="text-xs bg-gray-100 px-2.5 py-1 rounded-lg font-bold">X Close</button>
+            </div>
+
+            {/* Slideable Images Panel */}
+            <div className="relative h-44 bg-gray-50 rounded-2xl overflow-hidden flex items-center justify-center border">
+              <img 
+                src={(selectedProduct.images || [selectedProduct.img || "📦"])[currentProductSlide]} 
+                alt="Product View" 
+                className="w-full h-full object-cover"
+              />
+              {(selectedProduct.images || []).length > 1 && (
+                <div className="absolute inset-x-2 bottom-2 flex justify-between">
+                  <button onClick={() => setCurrentProductSlide(prev => (prev > 0 ? prev - 1 : (selectedProduct.images.length - 1)))} className="bg-white/80 p-1 rounded-full text-xs shadow font-black">◀</button>
+                  <button onClick={() => setCurrentProductSlide(prev => (prev < (selectedProduct.images.length - 1) ? prev + 1 : 0))} className="bg-white/80 p-1 rounded-full text-xs shadow font-black">▶</button>
+                </div>
+              )}
+            </div>
+
+            {/* Specifications Field */}
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase text-gray-400">Product Specifications</span>
+              <p className="text-xs bg-gray-50 p-3 rounded-xl border border-gray-100 font-medium text-gray-700 leading-relaxed whitespace-pre-line">
+                {selectedProduct.specifications || "Premium high quality checked grocery asset."}
+              </p>
+            </div>
+
+            <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); alert("Added to Bag!"); }} className="w-full bg-orange-600 text-white font-black py-3 rounded-xl text-xs uppercase shadow">
+              Add This Item to Bag
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Wishlist Center Sheet */}
+      {isWishlistOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full max-h-[70vh] overflow-y-auto text-black space-y-4">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black text-sm">❤️ My Wishlist Favorites ({wishlist.length})</h3>
+              <button onClick={() => setIsWishlistOpen(false)} className="text-xs font-bold text-gray-400">X</button>
+            </div>
+            {wishlist.length === 0 ? (
+              <p className="text-xs font-bold text-center text-gray-400 py-10">Koi item favorite nahi kiya gaya.</p>
+            ) : (
+              wishlist.map(w => (
+                <div key={w.id} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded-xl border">
+                  <span className="font-bold truncate max-w-[150px]">{w.name}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => addToCart(w)} className="bg-orange-500 text-white p-1 px-2 rounded font-bold text-[10px]">Move to Bag</button>
+                    <button onClick={() => toggleWishlist(w)} className="text-red-500 font-bold">🗑</button>
+                  </div>
+                </div>
+              ))
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Push Notifications Hub View */}
+      {isNotifOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full max-h-[60vh] overflow-y-auto text-black space-y-3">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black text-sm">🔔 Store Announcements</h3>
+              <button onClick={() => setIsNotifOpen(false)} className="text-xs font-bold text-gray-400">X</button>
+            </div>
+            {notifications.length === 0 ? (
+              <p className="text-xs font-bold text-center text-gray-400 py-10">Koi naya message nahi mila.</p>
+            ) : (
+              notifications.map(n => (
+                <div key={n.id} className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-xs space-y-1">
+                  <p className="font-medium text-blue-900">{n.message}</p>
+                  <span className="text-[8px] text-gray-400 block text-right font-bold">{n.createdAt}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Highly Professional Cash Memo Invoice Panel (Point 13) */}
+      {showInvoice && (
+        <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">
+            
+            {/* Professional Invoice Corporate Header */}
+            <div className="text-center border-b-2 border-dashed border-gray-200 pb-3 space-y-0.5">
+              <h2 className="text-xl font-black uppercase tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-emerald-600">
+                Daily Needs Hub
+              </h2>
+              <p className="text-[9px] font-bold text-gray-500 uppercase">Premium Retail Cash Memo</p>
+              <p className="text-[9px] text-gray-400 font-medium">📍 Papuri, Nanoor, Birbhum, WB, 731240</p>
+              <div className="text-[9px] font-bold text-gray-600 flex justify-center gap-4 pt-1">
+                <span>📞 +91 8637589429</span>
+                <span>✉️ dailyneedshub@gmail.com</span>
+              </div>
+            </div>
+
+            {/* Meta logistics */}
+            <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 p-3 rounded-xl border border-gray-100">
+              <div>
+                <p className="text-gray-400 uppercase font-black text-[8px]">Invoice Framework</p>
+                <p className="font-bold text-gray-800 truncate">ID: {currentOrderId}</p>
+                <p className="text-gray-500 font-medium">{new Date().toLocaleString()}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-400 uppercase font-black text-[8px]">Shipping Target</p>
+                <p className="font-extrabold text-orange-600 truncate">{custInfo.name}</p>
+                <p className="text-gray-500 truncate font-semibold">{custInfo.vill} (PIN-{custInfo.pin})</p>
+              </div>
+            </div>
+
+            {/* Verified Universal App Intent UPI Integration (Point 9) */}
+            <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
+              <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ SECURE UPI TRANSACTION GATEWAY</span>
+              <p className="text-[10px] text-gray-600 font-bold leading-tight">Universal Payment link auto-detects PhonePe, Google Pay, Paytm & BHIM instantly.</p>
+              
+              <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
+                  alt="Universal UPI Pay Link" 
+                  className="w-32 h-32 mx-auto object-contain" 
+                />
+              </div>
+
+              {/* Standard multi-compatible cross platform anchor link */}
+              <a 
+                href={`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`}
+                className="block bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center"
+              >
+                🚀 Click Here to Open UPI Apps
+              </a>
+            </div>
+
+            {/* Product Summary */}
+            <div className="space-y-1.5 border-t pt-3 max-h-[15vh] overflow-y-auto pr-1">
+              {cart.map((item, idx) => (
+                <div key={idx} className="flex justify-between items-center text-[11px] text-gray-700">
+                  <span className="font-bold">{item.name} <b className="text-gray-400 font-medium">x{item.qty}</b></span>
+                  <span className="font-extrabold text-gray-900">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Total Balance block */}
+            <div className="flex justify-between items-center border-t-2 border-dashed border-gray-200 pt-3 text-sm font-black text-emerald-600 uppercase">
+              <span>Gross Total Amount Due:</span>
+              <span className="text-base font-black">₹{cartTotal}</span>
+            </div>
+
+            {/* Professional Sales Manager Digital Sign (Point 13) */}
+            <div className="border-t pt-3 flex flex-col items-end">
+              <div className="text-center space-y-0.5 pr-2">
+                <p className="font-serif italic text-sm font-bold text-indigo-700 tracking-wide selection:bg-none">
+                  Younus Abedin
+                </p>
+                <div className="w-24 h-[1px] bg-gray-300 mx-auto"></div>
+                <p className="text-[8px] font-black uppercase tracking-wider text-gray-400">Sales Manager Signature</p>
+              </div>
+            </div>
+
+            {/* Final Submission */}
+            <button 
+              onClick={sendWhatsAppNotification} 
+              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-2xl font-black shadow-md text-xs text-center uppercase tracking-wider"
+            >
+              ✅ Send Bill & Verification to WhatsApp
+            </button>
           </div>
         </div>
       )}

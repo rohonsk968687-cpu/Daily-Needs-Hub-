@@ -15,20 +15,19 @@ const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack"];
 const BRAND_LOGO_URL = "/logo.png"; 
 
-// Aapka Sahi UPI ID
+// 100% Verified Merchant UPI String
 const MY_UPI_ID = "8637589429-3@ybl"; 
 
 export default function App() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]); 
   const [cart, setCart] = useState([]);
-  const [wishlist, setWishlist] = useState([]);
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
-  const [activeTab, setActiveTab] = useState("shop"); // 'shop', 'categories', 'offers', 'orders'
+  const [activeTab, setActiveTab] = useState("shop"); // 'shop', 'categories', 'offers', 'account'
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState("");
@@ -175,6 +174,7 @@ export default function App() {
     }
   });
 
+  // Strict local generation interception - prevents immediate app context jumps
   const handleCheckoutInit = async () => {
     if(!custInfo.name || !custInfo.address) return alert("Naam aur Pata bharna zaruri hai!");
     try {
@@ -196,7 +196,7 @@ export default function App() {
 
   const sendWhatsAppNotification = () => {
     const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
-    const msg = `Naya Order & Payment Done - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}\n\nKripya Payment aur order deliver kijiye.`;
+    const msg = `Naya Order & Payment Done - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nAddress: ${custInfo.address}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     
     setShowInvoice(false);
@@ -226,16 +226,10 @@ export default function App() {
             <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-emerald-600 to-blue-600 tracking-tight font-sans uppercase leading-none">
               Daily Needs Hub
             </h1>
-            {user && <p className="text-[10px] font-black text-emerald-600 mt-1">👤 {user.displayName}</p>}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
            <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs">{darkMode ? '☀️' : '🌙'}</button>
-           {user ? (
-             <button onClick={handleLogout} className="text-[10px] bg-red-50 text-red-500 px-3 py-2 font-black rounded-xl border border-red-100">Logout</button>
-           ) : (
-             <button onClick={handleGoogleLogin} className="text-[10px] bg-blue-50 text-blue-600 px-3 py-2 font-black rounded-xl border border-blue-100 shadow-sm">👤 Login</button>
-           )}
         </div>
       </header>
 
@@ -252,22 +246,22 @@ export default function App() {
         )}
 
         {window.location.pathname === '/admin' ? (
-          /* Full Power Admin View */
+          /* Live Incoming Orders Panel Room */
           <div className="p-4">
             <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
-               <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Dashboard</h2>
+               <h2 className="text-xl font-bold mb-4 text-orange-600">Admin Central Dashboard</h2>
                {!isAdmin ? (
                  <input type="password" placeholder="Password" className="border p-3 w-full rounded-xl" onChange={(e) => e.target.value === 'admin123' && setIsAdmin(true)} />
                ) : (
                  <>
-                    {/* Live Tracking Order Control Room */}
+                    {/* Live Track Management Panel */}
                     <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200 space-y-3">
-                      <h3 className="text-xs font-black text-blue-800">📦 CUSTOMER ORDERS INCOMING DASHBOARD ({orders.length})</h3>
+                      <h3 className="text-xs font-black text-blue-800">📦 CUSTOMER INCOMING ORDERS ROOM ({orders.length})</h3>
                       {orders.map(ord => (
                         <div key={ord.id} className="p-3 bg-white rounded-xl text-xs space-y-1 shadow-sm border">
-                          <p><b>Customer:</b> {ord.customerName}</p>
+                          <p><b>Grahak Name:</b> {ord.customerName}</p>
+                          <p><b>Address:</b> {ord.address}</p>
                           <p><b>Total Bill:</b> ₹{ord.totalAmount}</p>
-                          <p><b>Time:</b> {ord.createdAt}</p>
                           <div className="flex items-center gap-2 mt-2">
                             <span className="font-bold text-[10px] text-orange-600">Status: {ord.status}</span>
                             <select 
@@ -281,6 +275,7 @@ export default function App() {
                               <option value="Delivered ✅">Delivered ✅</option>
                             </select>
                           </div>
+                          <button onClick={() => deleteDoc(doc(db, "orders", ord.id))} className="text-[9px] text-red-400 mt-2 block underline">Remove Order Record</button>
                         </div>
                       ))}
                     </div>
@@ -319,9 +314,16 @@ export default function App() {
                     {/* Matrix Management Controls */}
                     <div className="space-y-2 pt-4 border-t">
                       {products.map(p => (
-                        <div key={p.id} className="p-3 bg-gray-50 rounded-xl flex justify-between items-center text-xs">
-                          <span className="font-bold">{p.name}</span>
-                          <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500 font-black">🗑 Delete</button>
+                        <div key={p.id} className="p-3 bg-gray-50 rounded-xl space-y-2 border border-gray-100">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-bold">{p.name}</span>
+                            <button onClick={() => deleteDoc(doc(db, "products", p.id))} className="text-red-500 font-black">🗑 Delete</button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500">
+                            <div>Stock: <input type="number" className="w-12 p-1 border rounded text-black font-bold" defaultValue={p.stock} onBlur={(e) => updateProductData(p.id, "stock", e.target.value)} /></div>
+                            <div>Price: ₹<input type="number" className="w-12 p-1 border rounded text-black font-bold" defaultValue={p.price} onBlur={(e) => updateProductData(p.id, "price", e.target.value)} /></div>
+                            <div>Disc%: <input type="number" className="w-10 p-1 border rounded text-black font-bold" defaultValue={p.discount || 0} onBlur={(e) => updateProductData(p.id, "discount", e.target.value)} /></div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -330,7 +332,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* Customer View */
+          /* Customer Layouts */
           <>
             {activeTab === "shop" && (
               <>
@@ -386,29 +388,56 @@ export default function App() {
               </div>
             )}
 
-            {/* TRACK TAB FOR CLIENTS */}
-            {activeTab === "orders" && (
-              <div className="px-4">
-                <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-5 rounded-3xl text-white mb-4 shadow-md">
-                  <h2 className="text-xl font-black">📦 Live Order Tracker</h2>
-                  <p className="text-xs opacity-80">Apne order ka real-time live status check karein</p>
+            {/* 👤 BRAND NEW PERSONALIZED "MY ACCOUNT" PROFILE & TRACKING ROOM */}
+            {activeTab === "account" && (
+              <div className="px-4 space-y-6">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
+                  <h2 className="text-xl font-black">👤 My Account Dashboard</h2>
+                  <p className="text-xs opacity-80">Profile check aur active orders live tracking matrix</p>
                 </div>
+
+                {/* Google Sign-in Verification Box */}
+                <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
+                  <div>
+                    {user ? (
+                      <>
+                        <h4 className="font-extrabold text-sm text-gray-800">{user.displayName}</h4>
+                        <p className="text-[10px] text-gray-400 font-bold">{user.email}</p>
+                      </>
+                    ) : (
+                      <>
+                        <h4 className="font-extrabold text-sm text-gray-800">Welcome, Guest Grahak</h4>
+                        <p className="text-[10px] text-gray-400 font-bold">Sign-in to save absolute track metrics</p>
+                      </>
+                    )}
+                  </div>
+                  {user ? (
+                    <button onClick={handleLogout} className="bg-red-50 text-red-500 font-black text-xs px-3 py-2 rounded-xl border border-red-100">Logout</button>
+                  ) : (
+                    <button onClick={handleGoogleLogin} className="bg-blue-50 text-blue-600 font-black text-xs px-3 py-2 rounded-xl border border-blue-100">Connect Google</button>
+                  )}
+                </div>
+
+                {/* Live Tracking Engine Inner Room */}
                 <div className="space-y-3">
+                  <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 Live Orders Status Tracker</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
-                    <p className="text-center font-bold text-gray-400 py-6">Abhi tak koi order history nahi mili.</p>
+                    <div className="p-6 text-center bg-white/40 border border-dashed rounded-2xl text-xs font-bold text-gray-400">
+                      Koi active order ya purchase receipt nahi mili.
+                    </div>
                   ) : (
                     orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
-                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2">
+                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2 border-l-4 border-l-orange-500">
                         <div className="flex justify-between text-xs font-black">
-                          <span className="text-gray-500">ID: ...{o.id.slice(-6)}</span>
-                          <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{o.status}</span>
+                          <span className="text-gray-400">ID: ...{o.id.slice(-6)}</span>
+                          <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] shadow-sm font-black border border-emerald-100">{o.status}</span>
                         </div>
-                        <div className="text-xs text-gray-600 font-bold">
+                        <div className="text-xs text-gray-600 font-bold border-b pb-1">
                           {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
                         </div>
-                        <div className="flex justify-between items-center pt-2 border-t text-xs font-black">
-                          <span>Grand Total:</span>
-                          <span className="text-orange-600">₹{o.totalAmount}</span>
+                        <div className="flex justify-between items-center text-xs font-black pt-1">
+                          <span className="text-gray-400">Date: {o.createdAt.split(',')[0]}</span>
+                          <span className="text-orange-600 text-sm">₹{o.totalAmount}</span>
                         </div>
                       </div>
                     ))
@@ -417,8 +446,8 @@ export default function App() {
               </div>
             )}
 
-            {/* Products Grid Layout */}
-            {activeTab !== "categories" && activeTab !== "orders" && (
+            {/* Products Layout View */}
+            {activeTab !== "categories" && activeTab !== "account" && (
               <main className="p-4 grid grid-cols-2 gap-4">
                 {filtered.map(p => {
                   const hasDiscount = p.discount > 0;
@@ -471,9 +500,9 @@ export default function App() {
               <div className="space-y-2">
                 <p className="text-[10px] font-black tracking-widest text-gray-400 uppercase">Follow With Us</p>
                 <div className="flex gap-4">
-                  <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-blue-600">Facebook</a>
-                  <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-pink-600">Instagram</a>
-                  <a href="https://youtube.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-red-600">YouTube</a>
+                  <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700">Facebook</a>
+                  <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700">Instagram</a>
+                  <a href="https://youtube.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-gray-700">YouTube</a>
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -487,7 +516,7 @@ export default function App() {
               </div>
             </footer>
 
-            {/* 🌟 5-TAB UPGRADED FIXED BOTTOM NAVIGATION BAR 🌟 */}
+            {/* 🌟 PREMIUM RECONFIGURED 4+1 Tab Icon Fixed Bottom Navigation Bar 🌟 */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-50 flex justify-around items-center rounded-t-[2rem] shadow-xl">
               <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🛒</span><span className="text-[10px]">Shop</span>
@@ -499,9 +528,9 @@ export default function App() {
                 <span className="text-lg">🎁</span><span className="text-[10px]">Offers</span>
               </button>
               
-              {/* FIXED DIRECT TRACK NAVIGATION ICON ENTRY */}
-              <button onClick={() => setActiveTab("orders")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "orders" ? "text-purple-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
-                <span className="text-lg">📦</span><span className="text-[10px]">Track</span>
+              {/* BRAND NEW "MY ACCOUNT" TAB ACCENT ENTRY INSTEAD OF DRY TRACK ICON */}
+              <button onClick={() => setActiveTab("account")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "account" ? "text-blue-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+                <span className="text-lg">👤</span><span className="text-[10px]">Account</span>
               </button>
               
               <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white rounded-2xl px-2.5 py-1 shadow-md">
@@ -543,6 +572,7 @@ export default function App() {
                   <h2 className="text-md font-black text-orange-600 uppercase">Verify Bill & Pay</h2>
                 </div>
 
+                {/* Instant Live UPI QR Generation Panel */}
                 <div className="p-4 bg-orange-50/50 border-2 border-dashed border-orange-200 rounded-2xl text-center space-y-3 shadow-inner">
                   <span className="text-[10px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black">⚡ INSTANT UPI PAYMENT</span>
                   <p className="text-[11px] text-gray-600 font-bold">Scan QR code using Google Pay, PhonePe or Paytm</p>
@@ -584,3 +614,4 @@ export default function App() {
     </div>
   );
 }
+

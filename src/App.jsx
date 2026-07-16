@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy, setDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy, setDoc, getDoc, writeBatch } from 'firebase/firestore';
 
 // Firebase Setup - Real Credentials Connected
 const firebaseConfig = {
@@ -24,6 +24,9 @@ const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack", "Flash Sale"];
 const BRAND_LOGO_URL = "/logo.png"; 
 const MY_UPI_ID = "8637589429-3@ybl"; 
+
+// Active Delivery PIN Codes Validator (Bolpur & Nanoor block areas)
+const ALLOWED_PINS = ["731204", "731240", "731215", "731224", "731236", "731214"];
 
 export default function App() {
   const [products, setProducts] = useState([]);
@@ -172,6 +175,9 @@ export default function App() {
 
   const saveAddressToLocal = () => {
     if (!custInfo.vill || !custInfo.pin) return alert("Village aur PIN Code zaroori hain!");
+    if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
+      return alert(`Sorry! We do not deliver to ${custInfo.pin} yet. Please enter Nanoor/Bolpur verified pin code.`);
+    }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
     alert("Address saved successfully inside mobile dashboard!");
   };
@@ -182,7 +188,7 @@ export default function App() {
   };
 
   const addToCart = (p) => {
-    if (p.stock <= 0) return alert("Stock nahi hai!");
+    if (p.stock <= 0) return alert("OutOfStock: Item bacha nahi hai!");
     const exist = cart.find(x => x.id === p.id);
     let updatedCart = [];
     if (exist) {
@@ -221,7 +227,6 @@ export default function App() {
     e.preventDefault();
     const el = e.target.elements;
     
-    // Multiple images separated by commas
     const imgArray = el.itemImg.value.split(",").map(url => url.trim());
 
     try {
@@ -273,6 +278,7 @@ export default function App() {
 
   const cartTotal = cart.reduce((a, c) => a + getDiscountedPrice(c.price, c.discount) * c.qty, 0);
   const totalSales = orders.reduce((a, o) => a + (o.totalAmount || 0), 0);
+  const outOfStockAlerts = products.filter(p => p.stock < 5);
   
   // Advanced Filter Engine
   const filtered = products.filter(p => {
@@ -290,10 +296,47 @@ export default function App() {
     }
   });
 
+  // Verification & Auto-Stock Deduction logic on Checkout
   const handleCheckoutInit = async () => {
     if(!custInfo.name || !custInfo.vill || !custInfo.pin) return alert("Naam, Village aur PIN Code bharna zaruri hai!");
+    
+    // Delivery Area PIN Validation
+    if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
+      return alert(`We cannot process this order! Currently we do not deliver to PIN: ${custInfo.pin}. Please use Bolpur or Nanoor valid address.`);
+    }
+
     const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
+    
     try {
+      // 1. WriteBatch setup for Auto-Stock Deduction
+      const batch = writeBatch(db);
+      let outOfStockFlag = false;
+      let blockedItemName = "";
+
+      for (let item of cart) {
+        const prodRef = doc(db, "products", item.id);
+        const prodSnap = await getDoc(prodRef);
+        
+        if (prodSnap.exists()) {
+          const currentStock = prodSnap.data().stock || 0;
+          if (currentStock < item.qty) {
+            outOfStockFlag = true;
+            blockedItemName = item.name;
+            break;
+          }
+          // Decrementing values safely inside dynamic batch transaction
+          batch.update(prodRef, { stock: currentStock - item.qty });
+        }
+      }
+
+      if (outOfStockFlag) {
+        return alert(`Sorry! ${blockedItemName} is out of stock or requested quantity exceeds available inventory.`);
+      }
+
+      // 2. Commit the atomic batch
+      await batch.commit();
+
+      // 3. Create active Order Record on Firebase
       const docRef = await addDoc(collection(db, "orders"), {
         customerName: custInfo.name,
         address: fullAddressString,
@@ -304,14 +347,14 @@ export default function App() {
         status: "Pending ⏳",
         createdAt: new Date().toLocaleString()
       });
+      
       setCurrentOrderId(docRef.id);
       setShowInvoice(true); 
     } catch (e) {
-      alert("Order create karne mein dikkat aayi.");
+      alert("Checkout error! Please try again.");
     }
   };
 
-  // Triggered when admin updates the payment mode inside live orders or database structure syncs
   const confirmCODModeSelection = async () => {
     try {
       await updateDoc(doc(db, "orders", currentOrderId), {
@@ -354,7 +397,6 @@ export default function App() {
     }
   };
 
-  // Open Legal Modals Content
   const handleOpenLegal = (type) => {
     let title = '';
     let content = '';
@@ -377,6 +419,16 @@ export default function App() {
     }
 
     setLegalModal({ isOpen: true, title, content });
+  };
+
+  const getOrderStatusProgress = (status) => {
+    switch(status) {
+      case "Pending ⏳": return 25;
+      case "Packed 📦": return 50;
+      case "Out for Delivery 🚚": return 75;
+      case "Delivered ✅": return 100;
+      default: return 10;
+    }
   };
 
   return (
@@ -406,17 +458,18 @@ export default function App() {
         </div>
       </header>
 
+      {/* Sticky Search bar on the top of Home layout (Point 1) */}
+      {activeTab === "shop" && window.location.pathname !== '/admin' && (
+        <div className="sticky top-[72px] z-30 px-4 py-2 bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-100">
+          <input 
+            type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks..." 
+            className="w-full p-3 bg-white rounded-2xl border-2 border-orange-100 text-xs focus:border-emerald-500 focus:outline-none transition-all text-black font-semibold shadow-inner"
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      )}
+
       <div className="max-w-md mx-auto">
-        {/* Search Bar Container */}
-        {activeTab === "shop" && window.location.pathname !== '/admin' && (
-          <div className="p-4">
-            <input 
-              type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks..." 
-              className="w-full p-4 bg-white/95 rounded-2xl border-2 border-orange-200 text-sm focus:border-emerald-500 focus:outline-none shadow-md transition-all text-black font-medium"
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        )}
 
         {window.location.pathname === '/admin' ? (
           <div className="p-4">
@@ -431,6 +484,23 @@ export default function App() {
                       <p className="text-[10px] tracking-wider uppercase opacity-60 font-bold">Total Gross Sales Volume</p>
                       <h3 className="text-3xl font-black text-emerald-400">₹{totalSales}</h3>
                       <p className="text-[9px] opacity-50">Calculated across {orders.length} processing records</p>
+                    </div>
+
+                    {/* Low Stock Alert Grid (Part 2 - Point 5) */}
+                    <div className="bg-red-50 p-4 rounded-2xl border border-red-200 space-y-2">
+                      <h3 className="text-xs font-black text-red-800 uppercase flex items-center gap-1">⚠️ Low Stock Alerts ({outOfStockAlerts.length})</h3>
+                      {outOfStockAlerts.length === 0 ? (
+                        <p className="text-[10px] font-bold text-gray-500">All inventory products are perfectly stocked!</p>
+                      ) : (
+                        <div className="max-h-24 overflow-y-auto space-y-1">
+                          {outOfStockAlerts.map(p => (
+                            <div key={p.id} className="flex justify-between items-center text-[10px] bg-white p-1.5 rounded-lg border font-bold">
+                              <span className="text-gray-800">{p.name}</span>
+                              <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[9px] font-black">Stock: {p.stock} units left</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Notification Broadcast Node */}
@@ -518,7 +588,7 @@ export default function App() {
           <>
             {activeTab === "shop" && (
               <>
-                <div className="px-4 mb-4">
+                <div className="px-4 mt-4 mb-4">
                   <div className="bg-gradient-to-r from-orange-500 via-emerald-500 to-blue-600 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
                     <h2 className="text-2xl font-black mb-1">Hello, {user?.displayName || "Guest Grahak"}! 👋</h2>
                     <p className="text-xs opacity-90 italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
@@ -556,7 +626,7 @@ export default function App() {
             )}
 
             {activeTab === "categories" && (
-              <div className="px-4 mb-4">
+              <div className="px-4 mt-4 mb-4">
                 <div className="bg-gradient-to-r from-emerald-600 to-teal-500 p-5 rounded-3xl text-white mb-6 shadow-md">
                   <h2 className="text-xl font-black">All Categories</h2>
                 </div>
@@ -572,7 +642,7 @@ export default function App() {
             )}
 
             {activeTab === "offers" && (
-              <div className="px-4 mb-2">
+              <div className="px-4 mt-4 mb-2">
                 <div className="bg-gradient-to-br from-red-500 via-pink-500 to-orange-500 p-6 rounded-3xl text-white shadow-xl mb-4">
                   <h2 className="text-2xl font-black mb-1">⚡ SPECIAL OFFERS ZONE</h2>
                 </div>
@@ -586,7 +656,7 @@ export default function App() {
 
             {/* Account Dashboard Tab Engine */}
             {activeTab === "account" && (
-              <div className="px-4 space-y-6">
+              <div className="px-4 mt-4 space-y-6">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
                   <h2 className="text-xl font-black">👤 Account Hub</h2>
                   <p className="text-xs opacity-80">Profile configurations & saved logistics</p>
@@ -634,7 +704,7 @@ export default function App() {
                       onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})}
                     />
                     <input 
-                      type="number" placeholder="6-Digit Area PIN Code *" 
+                      type="number" placeholder="6-Digit Area PIN Code (Nanoor/Bolpur block) *" 
                       value={custInfo.pin}
                       className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
                       onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})}
@@ -642,7 +712,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* My Orders Live Tracking Inner Box */}
+                {/* My Orders Live Tracking Inner Box (Part 2 - Point 4 Visual Progress steps) */}
                 <div className="space-y-3">
                   <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 My Orders Tracking System</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
@@ -651,11 +721,25 @@ export default function App() {
                     </div>
                   ) : (
                     orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
-                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-2 border-l-4 border-l-orange-500 text-black">
+                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-3 border-l-4 border-l-orange-500 text-black">
                         <div className="flex justify-between text-xs font-black">
                           <span className="text-gray-400">ID: ...{o.id.slice(-6)}</span>
                           <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] shadow-sm font-black border border-emerald-100">{o.status}</span>
                         </div>
+                        
+                        {/* Visual Progress Stepper status tracking */}
+                        <div className="space-y-1">
+                          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="bg-gradient-to-r from-orange-500 to-emerald-500 h-full transition-all duration-500" style={{ width: `${getOrderStatusProgress(o.status)}%` }}></div>
+                          </div>
+                          <div className="flex justify-between text-[8px] font-bold text-gray-400 uppercase">
+                            <span className={o.status.includes("Pending") ? "text-orange-600" : ""}>Pending</span>
+                            <span className={o.status.includes("Packed") ? "text-orange-600" : ""}>Packed</span>
+                            <span className={o.status.includes("Delivery") ? "text-orange-600" : ""}>Out</span>
+                            <span className={o.status.includes("Delivered") ? "text-emerald-600" : ""}>Delivered</span>
+                          </div>
+                        </div>
+
                         <div className="text-xs text-gray-600 font-bold border-b pb-1">
                           {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
                         </div>
@@ -679,11 +763,13 @@ export default function App() {
                   const finalPrice = getDiscountedPrice(p.price, p.discount);
                   const isWish = wishlist.find(x => x.id === p.id);
                   const pImages = p.images || [p.img || "📦"];
+                  const isOutOfStock = p.stock <= 0;
                   return (
                     <div key={p.id} className="bg-white p-3 rounded-[2rem] shadow-md border-2 border-orange-100/60 relative flex flex-col justify-between text-black">
                        <div className="absolute top-3 left-3 Combined-Node z-10 flex flex-col gap-1">
-                          {p.offerTag && p.offerTag !== "None" && <span className="bg-emerald-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{p.offerTag}</span>}
-                          {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">{p.discount}% OFF</span>}
+                          {isOutOfStock && <span className="bg-red-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">Out of Stock</span>}
+                          {p.offerTag && p.offerTag !== "None" && !isOutOfStock && <span className="bg-emerald-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{p.offerTag}</span>}
+                          {hasDiscount && !isOutOfStock && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">{p.discount}% OFF</span>}
                        </div>
                        
                        {/* Wishlist Button Logo */}
@@ -705,8 +791,8 @@ export default function App() {
                            </div>
                          </div>
                          <div className="mt-2 space-y-1">
-                           {p.stock <= 0 ? (
-                             <button disabled className="w-full py-1.5 bg-gray-200 text-gray-400 rounded-xl text-[10px] font-bold">OUT OF STOCK</button>
+                           {isOutOfStock ? (
+                             <button disabled className="w-full py-2 bg-gray-200 text-gray-400 rounded-xl text-[10px] font-bold cursor-not-allowed">OUT OF STOCK</button>
                            ) : (
                              <>
                                <button onClick={() => { addToCart(p); alert("Added to cart drawer!"); }} className="w-full py-1.5 bg-gray-100 text-gray-700 font-extrabold rounded-xl text-[10px] border border-gray-200 shadow-sm active:scale-95 transition-all">

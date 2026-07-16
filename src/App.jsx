@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy, setDoc, getDoc, writeBatch } from 'firebase/firestore';
 
-// Firebase Setup - Production Environment Mode
+// Firebase Setup - Real Credentials Connected
 const firebaseConfig = {
   apiKey: "AIzaSyChwU32Co32x2BFk5XQ04Gr_230JexB2KU",
   authDomain: "daily-needs-hub-15205.firebaseapp.com",
@@ -34,10 +34,12 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [user, setUser] = useState(null);
   
-  // Navigation & Access Control Configuration States
+  // Isolated Navigation Rules & Security Matrix States
   const [isAdmin, setIsAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState("shop"); // Customer Tabs: 'shop', 'categories', 'offers', 'account'
-  const [adminTab, setAdminTab] = useState("dashboard"); // Admin Tabs: 'dashboard', 'add-item', 'manage-items', 'orders'
+  const [isAdminUrl, setIsAdminUrl] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [activeTab, setActiveTab] = useState("shop"); 
+  const [adminTab, setAdminTab] = useState("dashboard"); 
   
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
@@ -50,8 +52,7 @@ export default function App() {
   const [currentOrderId, setCurrentOrderId] = useState("");
   const [darkMode, setDarkMode] = useState(false);
   const [legalModal, setLegalModal] = useState({ isOpen: false, title: '', content: '' });
-  const [paymentType, setPaymentType] = useState("UPI"); // 'UPI' or 'COD'
-  const [utrNumber, setUtrNumber] = useState("");
+  const [paymentType, setPaymentType] = useState("UPI"); 
   const [flashTime, setFlashTime] = useState(3600); 
 
   const [custInfo, setCustInfo] = useState({ name: '', vill: '', landmark: '', pin: '', phone: '' });
@@ -66,7 +67,15 @@ export default function App() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
 
-  // Load and save Cart to Firebase when user login status changes (Persistent Cart Engine)
+  // Read current URL path node for deep verification routing
+  useEffect(() => {
+    if (window.location.pathname === "/admin" || window.location.hash === "#admin") {
+      setIsAdminUrl(true);
+    } else {
+      setIsAdminUrl(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCart = async () => {
@@ -84,7 +93,6 @@ export default function App() {
     }
   }, [user]);
 
-  // Sync Cart State with DB or LocalStorage Node
   const syncCart = async (updatedCart) => {
     setCart(updatedCart);
     if (user && !user.isAnonymous) {
@@ -269,7 +277,12 @@ export default function App() {
     alert("Order status updated successfully!");
   };
 
-  // Complex Real-Time Time Splits Analytics Engine Processor
+  const updateOrderPaymentStatus = async (id, nextPayStatus) => {
+    await updateDoc(doc(db, "orders", id), { paymentStatus: nextPayStatus });
+    alert("Payment verification status updated inside cloud database!");
+  };
+
+  // Complex Analytics Engine for Splits Calculations
   const getSalesAnalytics = () => {
     const todayStr = new Date().toLocaleDateString();
     let todayVol = 0, weeklyVol = 0, monthlyVol = 0;
@@ -281,22 +294,18 @@ export default function App() {
       if (orderDate === todayStr) {
         todayVol += amt;
       }
-      // General aggregation pipeline for global metrics
       weeklyVol += amt;
       monthlyVol += amt;
     });
 
     const averageTicketSize = orders.length > 0 ? Math.round(monthlyVol / orders.length) : 0;
-
     return { today: todayVol, weekly: weeklyVol, monthly: monthlyVol, avgTicket: averageTicketSize };
   };
 
   const salesMetrics = getSalesAnalytics();
   const outOfStockAlerts = products.filter(p => p.stock < 5);
-
   const cartTotal = cart.reduce((a, c) => a + getDiscountedPrice(c.price, c.discount) * c.qty, 0);
   
-  // Advanced Filtering Search Architecture
   const filtered = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
     if (activeTab === "offers") {
@@ -312,13 +321,11 @@ export default function App() {
     }
   });
 
+  // Automated stock parameters trigger logic during checkout initialization
   const handleCheckoutInit = async () => {
     if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone) return alert("Naam, Phone, Village aur PIN Code bharna zaruri hai!");
     if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
       return alert(`We cannot process this order! Currently we do not deliver to PIN: ${custInfo.pin}. Please use Bolpur or Nanoor valid address.`);
-    }
-    if(paymentType === "UPI" && !utrNumber.trim()) {
-      return alert("Online payment ke liye transaction Ref ID / UTR Number fill karna zaroori hai!");
     }
 
     const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
@@ -357,7 +364,8 @@ export default function App() {
         items: cart.map(i => ({ name: i.name, qty: i.qty, total: getDiscountedPrice(i.price, i.discount) * i.qty })),
         totalAmount: cartTotal,
         paymentMode: paymentType === "COD" ? "Cash on Delivery (COD)" : "Online UPI Payment",
-        utr: paymentType === "UPI" ? utrNumber : "COD Mode Verification Complete",
+        paymentStatus: paymentType === "UPI" ? "Awaiting Admin Verification ⏳" : "COD Pending Delivery",
+        utr: paymentType === "UPI" ? "AUTO-UPI-INTENT" : "COD Mode Verification Complete",
         status: "Pending ⏳",
         createdAt: new Date().toLocaleString()
       });
@@ -369,16 +377,28 @@ export default function App() {
     }
   };
 
+  const confirmCODModeSelection = async () => {
+    try {
+      await updateDoc(doc(db, "orders", currentOrderId), {
+        paymentMode: "Cash on Delivery (COD)",
+        paymentStatus: "COD Pending Delivery",
+        utr: "COD Mode Verification Complete"
+      });
+      alert("COD Mode selected successfully for this receipt!");
+    } catch(err) {
+      console.log("Error updating checkout node");
+    }
+  };
+
   const sendWhatsAppNotification = () => {
     const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
     const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
-    const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : `UPI Paid (UTR: ${utrNumber})`;
+    const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : "UPI Intent Flow Initialized";
     const msg = `Naya Order & Status: ${modeLabel} - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nPhone: ${custInfo.phone}\nAddress: ${fullAddressString}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     
     setShowInvoice(false);
     setCart([]);
-    setUtrNumber("");
     syncCart([]);
     setIsCartOpen(false);
   };
@@ -435,10 +455,17 @@ export default function App() {
     }
   };
 
+  // Automated Flipkart Style Deep link generation engine mapping universal apps
+  const getUPIIntentLink = () => {
+    const merchantName = "Daily Needs Hub";
+    const note = "Grocery Order Fast checkout Processing";
+    return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${cartTotal}&tn=${encodeURIComponent(note)}&cu=INR`;
+  };
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-amber-50/60 via-white to-emerald-50/60 text-gray-900'} pb-32 transition-all duration-500 font-sans`}>
       
-      {/* Header Framework View */}
+      {/* Universal Header framework view */}
       <header className="p-3 bg-white/95 backdrop-blur-md shadow-md sticky top-0 z-40 flex justify-between items-center border-b border-orange-100 max-w-md mx-auto">
         <div className="flex items-center gap-3 min-w-0 flex-1" onClick={() => { if(!isAdmin) { setActiveTab("shop"); } }}>
           <img src={BRAND_LOGO_URL} alt="Logo" className="w-12 h-12 object-contain rounded-xl shadow-sm bg-orange-50 p-0.5" />
@@ -451,7 +478,7 @@ export default function App() {
         <div className="flex items-center gap-2 flex-shrink-0">
            {!isAdmin && (
              <>
-               <button onClick={() => setIsNotifOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs relative">
+               <button onClick={() => setIsNotifOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs relative text-black">
                  🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{notifications.length}</span>}
                </button>
                <button onClick={() => setIsWishlistOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs">❤️</button>
@@ -462,23 +489,12 @@ export default function App() {
                Login
              </button>
            )}
-           <button onClick={() => {
-             if(!isAdmin) {
-               const verifyAdminPass = prompt("Enter Security Code Node:");
-               if(verifyAdminPass === 'Younus@968687') { setIsAdmin(true); setAdminTab("dashboard"); }
-             } else {
-               setIsAdmin(false);
-               setActiveTab("shop");
-             }
-           }} className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black tracking-wider transition-all uppercase ${isAdmin ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
-             {isAdmin ? "Exit Control" : "🔑 Admin"}
-           </button>
-           <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs">{darkMode ? '☀️' : '🌙'}</button>
+           <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs text-black">{darkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
 
       {/* Sticky Custom Search Bar on Top of layout */}
-      {!isAdmin && activeTab === "shop" && (
+      {!isAdmin && !isAdminUrl && activeTab === "shop" && (
         <div className="sticky top-[69px] z-30 px-4 py-2 bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-100 max-w-md mx-auto">
           <input 
             type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks..." 
@@ -490,171 +506,201 @@ export default function App() {
 
       <div className="max-w-md mx-auto">
 
-        {isAdmin ? (
-          /* =========================================
-             ADMIN CONFIGURATION PLATFORM ARCHITECTURE
-             ========================================= */
-          <div className="p-4 space-y-6">
-            
-            {/* Sales Dashboard Analytics Engine Module (Admin Tab 1) */}
-            {adminTab === "dashboard" && (
-              <div className="space-y-4">
-                <div className="bg-gradient-to-br from-gray-950 via-slate-900 to-gray-900 rounded-3xl p-5 text-white space-y-4 shadow-xl border border-slate-800">
-                  <h3 className="text-xs font-black text-slate-400 tracking-wider uppercase">Live Sales Performance Engine</h3>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-white/5 p-2 rounded-2xl border border-white/5">
-                      <p className="text-[9px] text-gray-400 font-bold uppercase">Today</p>
-                      <p className="text-sm font-black text-emerald-400 mt-0.5">₹{salesMetrics.today}</p>
-                    </div>
-                    <div className="bg-white/5 p-2 rounded-2xl border border-white/5">
-                      <p className="text-[9px] text-gray-400 font-bold uppercase">Weekly Split</p>
-                      <p className="text-sm font-black text-teal-400 mt-0.5">₹{salesMetrics.weekly}</p>
-                    </div>
-                    <div className="bg-white/5 p-2 rounded-2xl border border-white/5">
-                      <p className="text-[9px] text-gray-400 font-bold uppercase">Monthly Split</p>
-                      <p className="text-sm font-black text-indigo-400 mt-0.5">₹{salesMetrics.monthly}</p>
-                    </div>
-                  </div>
-                  <div className="pt-2 border-t border-white/5 flex justify-between items-center text-[11px] font-bold text-gray-300">
-                    <span>Average Ticket Size / User Order:</span>
-                    <span className="text-yellow-400 font-black text-xs">₹{salesMetrics.avgTicket}</span>
-                  </div>
-                </div>
-
-                {/* Inventory Radar Matrix */}
-                <div className="bg-white p-4 rounded-3xl border border-red-100 shadow-sm space-y-3 text-black">
-                  <h4 className="text-xs font-black text-red-600 uppercase tracking-wider flex items-center gap-1">⚠️ Inventory Low Stock Alert Radar</h4>
-                  <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
-                    {outOfStockAlerts.length === 0 ? (
-                      <p className="text-[10px] font-bold text-gray-400 text-center py-4">All stocks are perfectly loaded above metrics.</p>
-                    ) : (
-                      outOfStockAlerts.map(p => (
-                        <div key={p.id} className="flex justify-between items-center text-xs p-2.5 bg-red-50/60 border border-red-100 rounded-xl font-bold">
-                          <span className="truncate max-w-[200px]">{p.name}</span>
-                          <span className="bg-red-500 text-white font-black text-[9px] px-2 py-0.5 rounded-md">{p.stock} units left</span>
+        {/* ISOLATED ADMIN ROUTING INFRASTRUCTURE PANEL GRID (Point 1) */}
+        {isAdminUrl ? (
+          <div className="p-4">
+            <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
+               <h2 className="text-xl font-bold mb-2 text-orange-600 text-center uppercase tracking-wider">Secure Access Node</h2>
+               {!isAdmin ? (
+                 <div className="space-y-4">
+                   <p className="text-[11px] text-center font-bold text-gray-400">Enter high-grade secure protocol password key to active structural dashboards</p>
+                   <input 
+                     type="password" 
+                     placeholder="Enter Control Key Password" 
+                     value={adminPassword}
+                     className="border-2 p-3 w-full rounded-xl text-center font-black tracking-widest bg-gray-50 focus:outline-none" 
+                     onChange={(e) => {
+                       setAdminPassword(e.target.value);
+                       if(e.target.value === 'Younus@968687') { setIsAdmin(true); setAdminTab("dashboard"); }
+                     }} 
+                   />
+                 </div>
+               ) : (
+                 <div className="space-y-6">
+                    
+                    {/* Sales Dashboard Analytics Engine Module (Admin Tab 1) */}
+                    {adminTab === "dashboard" && (
+                      <div className="space-y-4">
+                        <div className="bg-gradient-to-br from-gray-950 via-slate-900 to-gray-900 rounded-3xl p-5 text-white space-y-4 shadow-xl border border-slate-800">
+                          <h3 className="text-xs font-black text-slate-400 tracking-wider uppercase">Live Sales Performance Engine</h3>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-white/5 p-2 rounded-2xl border border-white/5">
+                              <p className="text-[9px] text-gray-400 font-bold uppercase">Today</p>
+                              <p className="text-sm font-black text-emerald-400 mt-0.5">₹{salesMetrics.today}</p>
+                            </div>
+                            <div className="bg-white/5 p-2 rounded-2xl border border-white/5">
+                              <p className="text-[9px] text-gray-400 font-bold uppercase">Weekly Split</p>
+                              <p className="text-sm font-black text-teal-400 mt-0.5">₹{salesMetrics.weekly}</p>
+                            </div>
+                            <div className="bg-white/5 p-2 rounded-2xl border border-white/5">
+                              <p className="text-[9px] text-gray-400 font-bold uppercase">Monthly Split</p>
+                              <p className="text-sm font-black text-indigo-400 mt-0.5">₹{salesMetrics.monthly}</p>
+                            </div>
+                          </div>
+                          <div className="pt-2 border-t border-white/5 flex justify-between items-center text-[11px] font-bold text-gray-300">
+                            <span>Average Ticket Size / User Order:</span>
+                            <span className="text-yellow-400 font-black text-xs">₹{salesMetrics.avgTicket}</span>
+                          </div>
                         </div>
-                      ))
+
+                        {/* Inventory Radar Matrix */}
+                        <div className="bg-white p-4 rounded-3xl border border-red-100 shadow-sm space-y-3 text-black">
+                          <h4 className="text-xs font-black text-red-600 uppercase tracking-wider flex items-center gap-1">⚠️ Inventory Low Stock Alert Radar</h4>
+                          <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-1">
+                            {outOfStockAlerts.length === 0 ? (
+                              <p className="text-[10px] font-bold text-gray-400 text-center py-4">All stocks are perfectly loaded above metrics.</p>
+                            ) : (
+                              outOfStockAlerts.map(p => (
+                                <div key={p.id} className="flex justify-between items-center text-xs p-2.5 bg-red-50/60 border border-red-100 rounded-xl font-bold">
+                                  <span className="truncate max-w-[200px]">{p.name}</span>
+                                  <span className="bg-red-500 text-white font-black text-[9px] px-2 py-0.5 rounded-md">{p.stock} units left</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     )}
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* Add Item Form Payload Engine (Admin Tab 2) */}
-            {adminTab === "add-item" && (
-              <form onSubmit={addProduct} className="bg-white p-5 rounded-3xl border shadow-sm grid gap-3 text-black">
-                <h3 className="text-xs font-black text-orange-600 uppercase tracking-wider">📦 Inject New Stock Payload</h3>
-                <input name="itemName" placeholder="Item / Product Name Title *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
-                <div className="grid grid-cols-3 gap-2">
-                  <input name="itemPrice" type="number" placeholder="MRP (₹) *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
-                  <input name="itemDiscount" type="number" placeholder="Disc %" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" />
-                  <input name="itemStock" type="number" placeholder="Stock Qty *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
-                </div>
-                <div className="flex justify-between items-center text-[10px] font-black p-2.5 bg-gray-50 rounded-xl border">
-                  <label className="flex items-center gap-1"><input type="checkbox" name="bestSeller" /> ✨ BestSeller</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" name="newArrival" /> 🚀 New Arrival</label>
-                  <select name="itemOfferTag" className="p-1 border bg-white rounded font-bold text-[9px]">
-                    {offerTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
-                  </select>
-                </div>
-                <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
-                <textarea name="itemSpecs" placeholder="Product Details / Specifications Specifications" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" rows="2" />
-                
-                <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50 text-xs font-black">
-                  {categories.slice(1).map(c => <option key={c} value={c}>{c} Section</option>)}
-                </select>
-                <button type="submit" className="bg-orange-600 text-white p-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow">ADD PRODUCT TO LIVE NODES</button>
-              </form>
-            )}
-
-            {/* Quick Counters Inventory Manager Sheet (Admin Tab 3) */}
-            {adminTab === "manage-items" && (
-              <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-4 text-black">
-                <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider border-b pb-2">📋 Stock Controller Grid Metadata</h3>
-                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                  {products.map(p => {
-                    const isLow = p.stock < 5;
-                    return (
-                      <div key={p.id} className={`p-3 rounded-2xl flex flex-col gap-2 border transition-all ${isLow ? 'bg-red-50/40 border-red-200' : 'bg-gray-50/50'}`}>
-                        <div className="flex justify-between items-start">
-                          <span className="text-xs font-black text-gray-800 truncate max-w-[70%]">{p.name}</span>
-                          <button onClick={async () => { if(window.confirm("Delete asset item?")) await deleteDoc(doc(db, "products", p.id)); }} className="text-[10px] text-red-500 font-bold underline">Delete</button>
+                    {/* Add Item Form Payload Engine (Admin Tab 2) */}
+                    {adminTab === "add-item" && (
+                      <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-black">
+                        <h3 className="text-xs font-black text-orange-600 uppercase tracking-wider">📦 Inject New Stock Payload</h3>
+                        <input name="itemName" placeholder="Item / Product Name Title *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
+                        <div className="grid grid-cols-3 gap-2">
+                          <input name="itemPrice" type="number" placeholder="Price (₹) *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
+                          <input name="itemDiscount" type="number" placeholder="Disc %" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" />
+                          <input name="itemStock" type="number" placeholder="Stock Qty *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
                         </div>
-                        
-                        {/* Inline micro adjustments controls parameters */}
-                        <div className="flex justify-between items-center pt-1 border-t border-dashed">
-                          <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-bold">
-                            <span>MRP: ₹{p.price}</span>
-                            <span>|</span>
-                            <span>Disc: {p.discount || 0}%</span>
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => updateProductData(p.id, "stock", Math.max(0, p.stock - 1))} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">-</button>
-                            <span className={`text-xs font-black px-2 ${isLow ? 'text-red-600' : 'text-slate-800'}`}>Stock: {p.stock}</span>
-                            <button onClick={() => updateProductData(p.id, "stock", p.stock + 1)} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">+</button>
-                          </div>
+                        <div className="flex justify-between items-center text-[10px] font-black p-2.5 bg-gray-50 rounded-xl border">
+                          <label className="flex items-center gap-1"><input type="checkbox" name="bestSeller" /> ✨ BestSeller</label>
+                          <label className="flex items-center gap-1"><input type="checkbox" name="newArrival" /> 🚀 New Arrival</label>
+                          <select name="itemOfferTag" className="p-1 border bg-white rounded font-bold text-[9px]">
+                            {offerTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+                          </select>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Orders Pipeline Redirection Engine Room (Admin Tab 4) */}
-            {adminTab === "orders" && (
-              <div className="space-y-3 text-black">
-                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-200">
-                  <h3 className="text-xs font-black text-blue-800 uppercase tracking-wider">📦 Customer Order Pipelines Stream ({orders.length})</h3>
-                </div>
-                <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
-                  {orders.map(ord => (
-                    <div key={ord.id} className="p-4 bg-white rounded-3xl shadow-sm border border-gray-100 space-y-2 text-xs">
-                      <div className="flex justify-between font-black border-b pb-1 text-gray-400">
-                        <span>ID: ...{ord.id.slice(-6)}</span>
-                        <span className="text-orange-600">₹{ord.totalAmount}</span>
-                      </div>
-                      <p><b>Grahak:</b> {ord.customerName}</p>
-                      <p className="text-gray-600"><b>Address:</b> {ord.address}</p>
-                      <p className="text-blue-700 font-bold"><b>Mode Selection:</b> {ord.paymentMode || "Online UPI payment"}</p>
-                      {ord.utr && <p className="bg-gray-50 p-1 text-[10px] font-mono text-gray-500">Ref ID: {ord.utr}</p>}
-                      
-                      {/* Interactive Trigger parameters controls */}
-                      <div className="flex justify-between items-center pt-2 border-t gap-2">
-                        {/* Direct Click-to-Call Link */}
-                        <a href={`tel:${ord.phone || '8637589429'}`} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 border border-emerald-200 rounded-xl font-black text-[10px] flex items-center gap-1 shadow-sm uppercase tracking-wide">
-                          📞 Call Buyer
-                        </a>
+                        <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
+                        <textarea name="itemSpecs" placeholder="Product Details / Specifications" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" rows="2" />
                         
-                        <select 
-                          className="p-1.5 border rounded-xl bg-gray-50 font-black text-[10px] shadow-sm text-slate-800"
-                          onChange={(e) => updateOrderStatus(ord.id, e.target.value)}
-                          defaultValue={ord.status}
-                        >
-                          <option value="Pending ⏳">Pending ⏳</option>
-                          <option value="Packed 📦">Packed 📦</option>
-                          <option value="Out for Delivery 🚚">Out for Delivery 🚚</option>
-                          <option value="Delivered ✅">Delivered ✅</option>
+                        <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50 text-xs font-black">
+                          {categories.slice(1).map(c => <option key={c} value={c}>{c} Section</option>)}
                         </select>
+                        <button type="submit" className="bg-orange-600 text-white p-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow">ADD PRODUCT TO LIVE NODES</button>
+                      </form>
+                    )}
+
+                    {/* Quick Counters Inventory Manager Sheet (Admin Tab 3) */}
+                    {adminTab === "manage-items" && (
+                      <div className="bg-white rounded-3xl space-y-4 text-black">
+                        <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider border-b pb-2">📋 Stock Controller Grid Metadata</h3>
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                          {products.map(p => {
+                            const isLow = p.stock < 5;
+                            return (
+                              <div key={p.id} className={`p-3 rounded-2xl flex flex-col gap-2 border transition-all ${isLow ? 'bg-red-50/40 border-red-200' : 'bg-gray-50/50'}`}>
+                                <div className="flex justify-between items-start">
+                                  <span className="text-xs font-black text-gray-800 truncate max-w-[70%]">{p.name}</span>
+                                  <button onClick={async () => { if(window.confirm("Delete asset item?")) await deleteDoc(doc(db, "products", p.id)); }} className="text-[10px] text-red-500 font-bold underline">Delete</button>
+                                </div>
+                                <div className="flex justify-between items-center pt-1 border-t border-dashed">
+                                  <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-bold">
+                                    <span>MRP: ₹{p.price}</span>
+                                    <span>|</span>
+                                    <span>Disc: {p.discount || 0}%</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => updateProductData(p.id, "stock", Math.max(0, p.stock - 1))} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">-</button>
+                                    <span className={`text-xs font-black px-2 ${isLow ? 'text-red-600' : 'text-slate-800'}`}>Stock: {p.stock}</span>
+                                    <button onClick={() => updateProductData(p.id, "stock", p.stock + 1)} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">+</button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                    )}
 
-            {/* Broadcast push element trigger room */}
-            {adminTab === "dashboard" && (
-              <div className="bg-white p-4 rounded-3xl border shadow-sm">
-                <form onSubmit={sendBroadcastNotification} className="space-y-2">
-                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider">📢 Inject Broadcast Announcement</h3>
-                  <input name="notifText" placeholder="Kya message push karna chahte hain?" className="w-full p-2.5 text-xs border bg-gray-50 rounded-xl text-black font-semibold" required />
-                  <button type="submit" className="w-full bg-slate-900 text-white font-black p-2.5 text-xs rounded-xl shadow">Broadcast Alert</button>
-                </form>
-              </div>
-            )}
+                    {/* Orders Pipeline Engine Room (Admin Tab 4) */}
+                    {adminTab === "orders" && (
+                      <div className="space-y-3 text-black">
+                        <div className="bg-blue-50 p-3 rounded-2xl border border-blue-200">
+                          <h3 className="text-xs font-black text-blue-800 uppercase tracking-wider">📦 Customer Order Pipelines Stream ({orders.length})</h3>
+                        </div>
+                        <div className="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+                          {orders.map(ord => (
+                            <div key={ord.id} className="p-4 bg-white rounded-3xl shadow-sm border border-gray-100 space-y-2 text-xs">
+                              <div className="flex justify-between font-black border-b pb-1 text-gray-400">
+                                <span>ID: ...{ord.id.slice(-6)}</span>
+                                <span className="text-orange-600">₹{ord.totalAmount}</span>
+                              </div>
+                              <p><b>Grahak:</b> {ord.customerName}</p>
+                              <p className="text-gray-600"><b>Address:</b> {ord.address}</p>
+                              <p className="text-blue-700 font-bold"><b>Mode Selection:</b> {ord.paymentMode || "Online UPI payment"}</p>
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span>Verification Parameter:</span>
+                                <span className={`px-2 py-0.5 rounded text-[10px] ${ord.paymentStatus?.includes("Awaiting") ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>
+                                  {ord.paymentStatus || "Awaiting Admin Verification ⏳"}
+                                </span>
+                              </div>
+                              {ord.utr && <p className="bg-gray-50 p-1 text-[10px] font-mono text-gray-500">Ref ID: {ord.utr}</p>}
+                              
+                              <div className="flex justify-between items-center pt-2 border-t gap-2">
+                                <a href={`tel:${ord.phone || '8637589429'}`} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 border border-emerald-200 rounded-xl font-black text-[10px] flex items-center gap-1 shadow-sm uppercase tracking-wide">
+                                  📞 Call Buyer
+                                </a>
 
+                                {/* Admin Quick Toggle Verification Approve Button Node */}
+                                {ord.paymentStatus?.includes("Awaiting") && (
+                                  <button 
+                                    onClick={() => updateOrderPaymentStatus(ord.id, "Approved & Paid ✅")}
+                                    className="bg-emerald-600 text-white font-black text-[9px] px-2 py-1.5 rounded-xl uppercase tracking-wider shadow"
+                                  >
+                                    ✓ Approve Payment
+                                  </button>
+                                )}
+                                
+                                <select 
+                                  className="p-1.5 border rounded-xl bg-gray-50 font-black text-[10px] shadow-sm text-slate-800"
+                                  onChange={(e) => updateOrderStatus(ord.id, e.target.value)}
+                                  defaultValue={ord.status}
+                                >
+                                  <option value="Pending ⏳">Pending ⏳</option>
+                                  <option value="Packed 📦">Packed 📦</option>
+                                  <option value="Out for Delivery 🚚">Out for Delivery 🚚</option>
+                                  <option value="Delivered ✅">Delivered ✅</option>
+                                </select>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Broadcast push element trigger room */}
+                    {adminTab === "dashboard" && (
+                      <div className="bg-white p-2 rounded-3xl">
+                        <form onSubmit={sendBroadcastNotification} className="space-y-2">
+                          <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider">📢 Inject Broadcast Announcement</h3>
+                          <input name="notifText" placeholder="Kya message push karna chahte hain?" className="w-full p-2.5 text-xs border bg-gray-50 rounded-xl text-black font-semibold" required />
+                          <button type="submit" className="w-full bg-slate-900 text-white font-black p-2.5 text-xs rounded-xl shadow">Broadcast Alert</button>
+                        </form>
+                      </div>
+                    )}
+
+                 </div>
+               )}
+            </div>
           </div>
         ) : (
           /* =========================================
@@ -758,7 +804,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Permanent Saved Profile Coordinates (Now with compulsory phone field input) */}
+                {/* Permanent Saved Profile Coordinates (Compulsory phone field parameter) */}
                 <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
                   <div className="flex justify-between items-center border-b pb-2">
                     <h3 className="font-black text-sm text-gray-800">📍 Saved Shipping Address</h3>
@@ -838,7 +884,7 @@ export default function App() {
             {/* Products selection pipeline matrix grid layout view */}
             {activeTab !== "categories" && activeTab !== "account" && (
               <>
-                {/* Micro category tags indicator sliders directly built into top layout */}
+                {/* Category tags indicator sliders */}
                 <div className="flex gap-2 overflow-x-auto px-4 py-2 bg-transparent max-w-md mx-auto no-scrollbar">
                   {categories.map(cat => (
                     <button 
@@ -967,7 +1013,7 @@ export default function App() {
               </footer>
             )}
 
-            {/* Bottom Nav Bar Navigation Dock (Standard layout mapping client tabs) */}
+            {/* Bottom Nav Bar Navigation Dock */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-40 flex justify-around items-center rounded-t-[2rem] shadow-xl text-black max-w-md mx-auto">
               <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
                 <span className="text-lg">🏠</span><span className="text-[10px]">Home</span>
@@ -990,8 +1036,8 @@ export default function App() {
         )}
       </div>
 
-      {/* Special Dual Botton Admin Navigation Dock Module Sheet (Visible Only when Admin verifies) */}
-      {isAdmin && (
+      {/* Special Dual Bottom Admin Navigation Dock (Visible Only when URL Path matches and verifies password) */}
+      {isAdminUrl && isAdmin && (
         <div className="fixed bottom-0 inset-x-0 bg-slate-950 text-white border-t border-slate-800 p-2 z-50 flex justify-around items-center rounded-t-3xl shadow-2xl max-w-md mx-auto">
           <button onClick={() => setAdminTab("dashboard")} className={`flex flex-col items-center p-2 text-xs font-black ${adminTab === "dashboard" ? 'text-emerald-400 scale-105' : 'text-slate-500'}`}>
             <span>📊</span><span>Dashboard</span>
@@ -1043,7 +1089,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Advanced Cart Increment / Decrement System */}
+              {/* Advanced Cart Quantity Controls */}
               <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-1">
                 {cart.length === 0 ? (
                   <p className="text-xs text-center text-gray-400 font-bold py-10">Aapka cart khali hai bhai!</p>
@@ -1159,11 +1205,12 @@ export default function App() {
         </div>
       )}
 
-      {/* Highly Professional Cash Memo Invoice Panel with UTR Engine Gateways */}
+      {/* Highly Professional Cash Memo Invoice Panel (Flipkart Style One-Click Intent Engine Module Fixed - Customer side Point 4) */}
       {showInvoice && (
         <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">
             
+            {/* Daily Needs Hub Branding */}
             <div className="text-center border-b-2 border-dashed border-gray-200 pb-3 space-y-0.5">
               <h2 className="text-2xl font-black uppercase tracking-tight text-orange-600">
                 DAILY NEEDS HUB
@@ -1190,38 +1237,27 @@ export default function App() {
               </div>
             </div>
 
-            {/* Smart Dynamic UPI Verification Engine with UTR Box fields input (Customer Side Point 4) */}
+            {/* Flipkart-Style One-Click Auto UPI Intent Layout mapping parameters */}
             {paymentType === "UPI" ? (
               <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
-                <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ SECURE UPI TRANSACTION GATEWAY</span>
-                <p className="text-[10px] text-gray-600 font-bold leading-tight">Universal Payment link auto-detects PhonePe, Google Pay, Paytm & BHIM instantly.</p>
+                <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ FLIPKART STYLE ONE-CLICK INTENT GATEWAY</span>
+                <p className="text-[10px] text-gray-600 font-bold leading-tight">Niche click karte hi Google Pay/PhonePe open ho jayega. Back aate hi order confirm ho jayega!</p>
                 
                 <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
                   <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(getUPIIntentLink())}`} 
                     alt="Universal UPI Pay Link" 
                     className="w-32 h-32 mx-auto object-contain" 
                   />
                 </div>
 
+                {/* Direct Cross Platform Deep Link Handler */}
                 <a 
-                  href={`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`}
-                  className="block bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center"
+                  href={getUPIIntentLink()}
+                  className="block bg-gradient-to-r from-orange-600 to-red-500 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center uppercase tracking-wide"
                 >
-                  🚀 Click Here to Open UPI Apps
+                  🚀 Click to Open PhonePe / GPay
                 </a>
-
-                {/* Live UTR tracking entry input box node */}
-                <div className="pt-2 border-t border-orange-200/60 space-y-1 text-left">
-                  <label className="text-[9px] font-black text-gray-500 uppercase tracking-wide">Enter Payment Ref / UTR Number *</label>
-                  <input 
-                    type="text" 
-                    placeholder="12-Digit UPI Transaction ID" 
-                    value={utrNumber}
-                    className="w-full p-2.5 bg-white border border-orange-200 rounded-xl text-xs font-bold text-black"
-                    onChange={(e) => setUtrNumber(e.target.value)}
-                  />
-                </div>
               </div>
             ) : (
               <div className="p-4 bg-emerald-50/80 border-2 border-dashed border-emerald-300 rounded-2xl text-center space-y-2 shadow-inner">
@@ -1253,6 +1289,7 @@ export default function App() {
               <span className="text-base font-black">₹{cartTotal}</span>
             </div>
 
+            {/* Professional Sales Manager Digital Sign */}
             <div className="border-t pt-3 flex flex-col items-end">
               <div className="text-center space-y-0.5 pr-2">
                 <p className="font-serif italic text-sm font-bold text-indigo-700 tracking-wide selection:bg-none">

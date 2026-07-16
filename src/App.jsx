@@ -45,6 +45,7 @@ export default function App() {
   const [currentOrderId, setCurrentOrderId] = useState("");
   const [darkMode, setDarkMode] = useState(false);
   const [legalModal, setLegalModal] = useState({ isOpen: false, title: '', content: '' });
+  const [paymentType, setPaymentType] = useState("UPI"); // 'UPI' or 'COD'
   
   // Flash Sale Timer (1 hour initial value)
   const [flashTime, setFlashTime] = useState(3600); 
@@ -299,6 +300,7 @@ export default function App() {
         userEmail: user ? user.email : "Anonymous",
         items: cart.map(i => ({ name: i.name, qty: i.qty, total: getDiscountedPrice(i.price, i.discount) * i.qty })),
         totalAmount: cartTotal,
+        paymentMode: paymentType === "COD" ? "Cash on Delivery (COD)" : "Online UPI Payment",
         status: "Pending ⏳",
         createdAt: new Date().toLocaleString()
       });
@@ -309,10 +311,23 @@ export default function App() {
     }
   };
 
+  // Triggered when admin updates the payment mode inside live orders or database structure syncs
+  const confirmCODModeSelection = async () => {
+    try {
+      await updateDoc(doc(db, "orders", currentOrderId), {
+        paymentMode: "Cash on Delivery (COD)"
+      });
+      alert("COD Mode selected successfully for this receipt!");
+    } catch(err) {
+      console.log("Error updating checkout node");
+    }
+  };
+
   const sendWhatsAppNotification = () => {
     const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
     const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
-    const msg = `Naya Order & Payment Done - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nAddress: ${fullAddressString}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
+    const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : "UPI Paid Online";
+    const msg = `Naya Order & Status: ${modeLabel} - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nAddress: ${fullAddressString}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     
     setShowInvoice(false);
@@ -433,6 +448,7 @@ export default function App() {
                           <p><b>Grahak Name:</b> {ord.customerName}</p>
                           <p><b>Address:</b> {ord.address}</p>
                           <p><b>Total Bill:</b> ₹{ord.totalAmount}</p>
+                          <p className="text-emerald-700 font-extrabold"><b>Mode:</b> {ord.paymentMode || "Online UPI Payment"}</p>
                           <div className="flex items-center gap-2 mt-2">
                             <span className="font-bold text-[10px] text-orange-600">Status: {ord.status}</span>
                             <select 
@@ -643,6 +659,7 @@ export default function App() {
                         <div className="text-xs text-gray-600 font-bold border-b pb-1">
                           {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
                         </div>
+                        <p className="text-[10px] font-bold text-emerald-700">Type: {o.paymentMode || "Online UPI Payment"}</p>
                         <div className="flex justify-between items-center text-xs font-black pt-1">
                           <span className="text-gray-400">Date: {o.createdAt.split(',')[0]}</span>
                           <span className="text-orange-600 text-sm">₹{o.totalAmount}</span>
@@ -708,16 +725,16 @@ export default function App() {
               </main>
             )}
 
-            {/* Footer Engineering Architecture (Strictly on Home/Shop) */}
+            {/* Footer Engineering Architecture */}
             {activeTab === "shop" && (
               <footer className="mx-4 my-8 pt-6 text-gray-800 space-y-6 mb-28 border-t border-gray-200/60">
                 {/* Why Choose Us additions */}
                 <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-100 text-black">
                   <h4 className="text-xs font-black text-emerald-800 uppercase tracking-wider mb-2 text-center">🏆 Why Choose Daily Needs Hub</h4>
                   <div className="grid grid-cols-2 gap-3 text-[10px] font-bold">
-                    <div className="flex items-center gap-1">⚡ <span><b>Fast Delivery:</b> Seedha aapke ghar tak fast shipping</span></div>
+                    <div className="flex items-center gap-1">⚡ <span><b>Fast Delivery:</b> Seedha aapke ghar tak shipping</span></div>
                     <div className="flex items-center gap-1">💰 <span><b>Best Price:</b> Subse sasta rate market se kam</span></div>
-                    <div className="flex items-center gap-1">🛡️ <span><b>Secure Payment:</b> Verified Instant UPI Engine</span></div>
+                    <div className="flex items-center gap-1">🛡️ <span><b>Secure Payment:</b> Verified Instant Engine</span></div>
                     <div className="flex items-center gap-1">⏰ <span><b>24x7 Support:</b> Hamesha aapki sewa me tayaar</span></div>
                   </div>
                 </div>
@@ -730,7 +747,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Highly improved Legal & Information mapping grids */}
+                {/* Legal & Information mapping grids */}
                 <div className="grid grid-cols-2 gap-4 border-t pt-4 text-xs font-bold text-gray-700 text-center">
                   <div className="space-y-1">
                     <p className="text-[9px] text-gray-400 font-black uppercase">Company Info</p>
@@ -762,7 +779,7 @@ export default function App() {
                   <p>✉️ Mail desk: <a href="mailto:dailyneedshub@gmail.com" className="text-orange-600 underline">dailyneedshub@gmail.com</a></p>
                 </div>
 
-                {/* Centered Address as requested (Point 4) */}
+                {/* Centered Address */}
                 <div className="text-[10px] font-extrabold text-gray-400 pt-2 border-t text-center leading-relaxed">
                   📍 Bolpur to Palitpur Road, Near Al Ameen Mission, Papuri, Nanoor, Birbhum, West Bengal, 731240
                 </div>
@@ -803,13 +820,33 @@ export default function App() {
               </div>
               <div className="space-y-3 mb-6">
                 <input placeholder="Customer Full Name *" value={custInfo.name} className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold text-black" onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} />
+                
+                {/* Method Switch Selector Box */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">Select Payment Option</label>
+                  <div className="grid grid-cols-2 gap-2 mt-0.5">
+                    <button 
+                      onClick={() => setPaymentType("UPI")} 
+                      className={`p-2 rounded-xl text-xs font-black border transition-all ${paymentType === "UPI" ? 'bg-orange-500 text-white border-orange-600' : 'bg-gray-50 text-gray-600'}`}
+                    >
+                      📱 Pay via UPI
+                    </button>
+                    <button 
+                      onClick={() => setPaymentType("COD")} 
+                      className={`p-2 rounded-xl text-xs font-black border transition-all ${paymentType === "COD" ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-gray-50 text-gray-600'}`}
+                    >
+                      💵 Pay on Delivery
+                    </button>
+                  </div>
+                </div>
+                
                 <div className="p-3 bg-amber-50 rounded-xl text-[10px] font-bold text-amber-800 border border-amber-200">
                   ⚠️ Deliveries are tracked natively via configurations filled inside the Account tab profile fields.
                 </div>
               </div>
 
               {/* Advanced Cart Increment / Decrement System */}
-              <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1">
                 {cart.length === 0 ? (
                   <p className="text-xs text-center text-gray-400 font-bold py-10">Aapka cart khali hai bhai!</p>
                 ) : (
@@ -926,12 +963,12 @@ export default function App() {
         </div>
       )}
 
-      {/* Highly Professional Cash Memo Invoice Panel (Point 13) */}
+      {/* Highly Professional Cash Memo Invoice Panel */}
       {showInvoice && (
         <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">
             
-            {/* Daily Needs Hub Header Fixed (Point 3) */}
+            {/* Daily Needs Hub Header Fixed */}
             <div className="text-center border-b-2 border-dashed border-gray-200 pb-3 space-y-0.5">
               <h2 className="text-2xl font-black uppercase tracking-tight text-orange-600">
                 DAILY NEEDS HUB
@@ -958,27 +995,40 @@ export default function App() {
               </div>
             </div>
 
-            {/* Verified Universal App Intent UPI Integration */}
-            <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
-              <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ SECURE UPI TRANSACTION GATEWAY</span>
-              <p className="text-[10px] text-gray-600 font-bold leading-tight">Universal Payment link auto-detects PhonePe, Google Pay, Paytm & BHIM instantly.</p>
-              
-              <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
-                  alt="Universal UPI Pay Link" 
-                  className="w-32 h-32 mx-auto object-contain" 
-                />
-              </div>
+            {/* Condition Render Box based on Selected Option */}
+            {paymentType === "UPI" ? (
+              <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
+                <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ SECURE UPI TRANSACTION GATEWAY</span>
+                <p className="text-[10px] text-gray-600 font-bold leading-tight">Universal Payment link auto-detects PhonePe, Google Pay, Paytm & BHIM instantly.</p>
+                
+                <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`)}`} 
+                    alt="Universal UPI Pay Link" 
+                    className="w-32 h-32 mx-auto object-contain" 
+                  />
+                </div>
 
-              {/* Universal Deep Link */}
-              <a 
-                href={`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`}
-                className="block bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center"
-              >
-                🚀 Click Here to Open UPI Apps
-              </a>
-            </div>
+                <a 
+                  href={`upi://pay?pa=${MY_UPI_ID}&pn=DailyNeedsHub&am=${cartTotal}&cu=INR`}
+                  className="block bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center"
+                >
+                  🚀 Click Here to Open UPI Apps
+                </a>
+              </div>
+            ) : (
+              <div className="p-4 bg-emerald-50/80 border-2 border-dashed border-emerald-300 rounded-2xl text-center space-y-2 shadow-inner">
+                <span className="text-[9px] bg-emerald-600 text-white px-3 py-0.5 rounded-full font-black uppercase tracking-wider">💵 CASH ON DELIVERY MODE</span>
+                <p className="text-xs font-black text-emerald-900 pt-1">No advance payment required!</p>
+                <p className="text-[11px] text-emerald-700 font-medium px-2">Aapka saaman packed hone ke baad delivery agent ko cash ya physical upi se payment karein jab saaman ghar pahuche.</p>
+                <button 
+                  onClick={confirmCODModeSelection} 
+                  className="mt-1 bg-white text-emerald-700 font-bold border border-emerald-300 px-3 py-1 text-[10px] rounded-lg shadow-sm"
+                >
+                  Confirm COD Selection Matrix
+                </button>
+              </div>
+            )}
 
             {/* Product Summary */}
             <div className="space-y-1.5 border-t pt-3 max-h-[15vh] overflow-y-auto pr-1">
@@ -1018,7 +1068,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Dynamic Legal Content Modals (Point 5) */}
+      {/* Dynamic Legal Content Modals */}
       {legalModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-black border shadow-2xl">

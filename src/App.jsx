@@ -55,7 +55,16 @@ export default function App() {
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [flashTime, setFlashTime] = useState(3600); 
 
-  const [custInfo, setCustInfo] = useState({ name: '', vill: '', landmark: '', pin: '', phone: '' });
+  // Combined state management for Profile and Address parameters
+  const [custInfo, setCustInfo] = useState({ 
+    name: '', 
+    gender: 'Male',
+    phone: '',
+    vill: '', 
+    landmark: '', 
+    city: 'Nanoor',
+    pin: '' 
+  });
 
   const [slides, setSlides] = useState([
     { id: 1, img: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&q=80", text: "⚡ FLASH SALE LIVE: Grab Offers Instantly!" },
@@ -67,7 +76,7 @@ export default function App() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
 
-  // Read current URL path node for deep verification routing
+  // Verification routing path allocation hooks
   useEffect(() => {
     if (window.location.pathname === "/admin" || window.location.hash === "#admin") {
       setIsAdminUrl(true);
@@ -76,19 +85,30 @@ export default function App() {
     }
   }, []);
 
+  // Load cloud data structure metrics for profiles and carts
   useEffect(() => {
     if (user && !user.isAnonymous) {
-      const loadUserCart = async () => {
+      const loadUserCloudData = async () => {
+        // Load User Cart
         const cartDoc = await getDoc(doc(db, "carts", user.uid));
         if (cartDoc.exists()) {
           setCart(cartDoc.data().items || []);
         }
+        // Load Profile & Location Data Meta Node
+        const profileDoc = await getDoc(doc(db, "profiles", user.uid));
+        if (profileDoc.exists()) {
+          setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
+        }
       };
-      loadUserCart();
+      loadUserCloudData();
     } else {
       const localCart = localStorage.getItem("dnh_guest_cart");
       if (localCart) {
         try { setCart(JSON.parse(localCart)); } catch(e) { console.log(e); }
+      }
+      const localProfile = localStorage.getItem("dnh_saved_address");
+      if (localProfile) {
+        try { setCustInfo(prev => ({ ...prev, ...JSON.parse(localProfile) })); } catch(e) {}
       }
     }
   }, [user]);
@@ -106,7 +126,7 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
         setUser(currentUser);
-        setCustInfo(prev => ({ ...prev, name: currentUser.displayName || '' }));
+        setCustInfo(prev => ({ ...prev, name: prev.name || currentUser.displayName || '' }));
       } else {
         setUser(null);
         if (!currentUser) {
@@ -138,13 +158,6 @@ export default function App() {
       setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const savedAddr = localStorage.getItem("dnh_saved_address");
-    if (savedAddr) {
-      try {
-        setCustInfo(JSON.parse(savedAddr));
-      } catch (e) { console.log(e); }
-    }
-
     return () => { 
       clearInterval(timer); 
       clearInterval(flashTimer);
@@ -160,7 +173,6 @@ export default function App() {
       const result = await signInWithPopup(auth, googleProvider);
       if(result.user) {
         setUser(result.user);
-        setCustInfo(prev => ({ ...prev, name: result.user.displayName || '' }));
       }
     } catch (error) {
       alert("Login Error: " + error.message);
@@ -172,16 +184,29 @@ export default function App() {
     setUser(null);
     setCart([]);
     localStorage.removeItem("dnh_guest_cart");
+    setCustInfo({ name: '', gender: 'Male', phone: '', vill: '', landmark: '', city: 'Nanoor', pin: '' });
     alert("Logged out successfully!");
   };
 
-  const saveAddressToLocal = () => {
-    if (!custInfo.vill || !custInfo.pin || !custInfo.phone) return alert("Village, Phone aur PIN Code zaroori hain!");
+  const saveProfileDataToCloud = async () => {
+    if (!custInfo.name || !custInfo.phone) return alert("Profile ke liye Name aur Phone parameters mandatory hain!");
+    if (user && !user.isAnonymous) {
+      await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
+    }
+    localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
+    alert("Profile parameters updated inside live database successfully!");
+  };
+
+  const saveAddressToLocal = async () => {
+    if (!custInfo.vill || !custInfo.pin || !custInfo.city) return alert("Village, City aur Area PIN Code zaroori hain!");
     if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
       return alert(`Sorry! We do not deliver to ${custInfo.pin} yet. Please enter Nanoor/Bolpur verified pin code.`);
     }
+    if (user && !user.isAnonymous) {
+      await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
+    }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
-    alert("Address saved successfully inside mobile dashboard!");
+    alert("Shipping logistics coordinates verified and saved securely!");
   };
 
   const getDiscountedPrice = (price, discount) => {
@@ -282,7 +307,6 @@ export default function App() {
     alert("Payment verification status updated inside cloud database!");
   };
 
-  // Complex Analytics Engine for Splits Calculations
   const getSalesAnalytics = () => {
     const todayStr = new Date().toLocaleDateString();
     let todayVol = 0, weeklyVol = 0, monthlyVol = 0;
@@ -321,14 +345,15 @@ export default function App() {
     }
   });
 
-  // Automated stock parameters trigger logic during checkout initialization
   const handleCheckoutInit = async () => {
-    if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone) return alert("Naam, Phone, Village aur PIN Code bharna zaruri hai!");
+    if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone || !custInfo.city) {
+      return alert("Naam, Phone, Village, City aur PIN Code bharna zaruri hai! Please check your profile configurations.");
+    }
     if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
       return alert(`We cannot process this order! Currently we do not deliver to PIN: ${custInfo.pin}. Please use Bolpur or Nanoor valid address.`);
     }
 
-    const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
+    const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
     
     try {
       const batch = writeBatch(db);
@@ -392,7 +417,7 @@ export default function App() {
 
   const sendWhatsAppNotification = () => {
     const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
-    const fullAddressString = `${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
+    const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
     const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : "UPI Intent Flow Initialized";
     const msg = `Naya Order & Status: ${modeLabel} - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nPhone: ${custInfo.phone}\nAddress: ${fullAddressString}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
@@ -455,7 +480,6 @@ export default function App() {
     }
   };
 
-  // Automated Flipkart Style Deep link generation engine mapping universal apps
   const getUPIIntentLink = () => {
     const merchantName = "Daily Needs Hub";
     const note = "Grocery Order Fast checkout Processing";
@@ -465,7 +489,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-amber-50/60 via-white to-emerald-50/60 text-gray-900'} pb-32 transition-all duration-500 font-sans`}>
       
-      {/* Universal Header framework view */}
+      {/* Header View */}
       <header className="p-3 bg-white/95 backdrop-blur-md shadow-md sticky top-0 z-40 flex justify-between items-center border-b border-orange-100 max-w-md mx-auto">
         <div className="flex items-center gap-3 min-w-0 flex-1" onClick={() => { if(!isAdmin) { setActiveTab("shop"); } }}>
           <img src={BRAND_LOGO_URL} alt="Logo" className="w-12 h-12 object-contain rounded-xl shadow-sm bg-orange-50 p-0.5" />
@@ -506,7 +530,7 @@ export default function App() {
 
       <div className="max-w-md mx-auto">
 
-        {/* ISOLATED ADMIN ROUTING INFRASTRUCTURE PANEL GRID (Point 1) */}
+        {/* ISOLATED ADMIN ROUTING INFRASTRUCTURE PANEL GRID */}
         {isAdminUrl ? (
           <div className="p-4">
             <div className="bg-white p-6 rounded-3xl shadow-xl text-black space-y-6 border border-orange-100">
@@ -660,7 +684,6 @@ export default function App() {
                                   📞 Call Buyer
                                 </a>
 
-                                {/* Admin Quick Toggle Verification Approve Button Node */}
                                 {ord.paymentStatus?.includes("Awaiting") && (
                                   <button 
                                     onClick={() => updateOrderPaymentStatus(ord.id, "Approved & Paid ✅")}
@@ -711,7 +734,7 @@ export default function App() {
               <>
                 <div className="px-4 mb-4">
                   <div className="bg-gradient-to-r from-orange-500 via-emerald-500 to-blue-600 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
-                    <h2 className="text-2xl font-black mb-1">Hello, {user?.displayName || "Guest Grahak"}! 👋</h2>
+                    <h2 className="text-2xl font-black mb-1">Hello, {custInfo.name || "Guest Grahak"}! 👋</h2>
                     <p className="text-xs opacity-90 italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
                   </div>
                 </div>
@@ -775,19 +798,20 @@ export default function App() {
               </div>
             )}
 
-            {/* Customer Account Dashboard Panel module */}
+            {/* UPGRADED PROFESSIONAL CUSTOMER ACCOUNT MODULE (My Profile + Saved Address + My Orders) */}
             {activeTab === "account" && (
-              <div className="px-4 space-y-6">
+              <div className="px-4 space-y-6 text-black">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
                   <h2 className="text-xl font-black">👤 Account Hub</h2>
                   <p className="text-xs opacity-80">Profile configurations & saved logistics</p>
                 </div>
 
+                {/* Google Connection Authentication Node */}
                 <div className="bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between">
-                  <div className="text-black">
+                  <div>
                     {user ? (
                       <>
-                        <h4 className="font-extrabold text-sm text-gray-800">{user.displayName}</h4>
+                        <h4 className="font-extrabold text-sm text-gray-800">{custInfo.name || user.displayName}</h4>
                         <p className="text-[10px] text-gray-400 font-bold">{user.email}</p>
                       </>
                     ) : (
@@ -804,46 +828,104 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Permanent Saved Profile Coordinates (Compulsory phone field parameter) */}
+                {/* SECTION 1: My Profile (Name, Gender, Mobile Number) */}
                 <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
                   <div className="flex justify-between items-center border-b pb-2">
-                    <h3 className="font-black text-sm text-gray-800">📍 Saved Shipping Address</h3>
-                    <button onClick={saveAddressToLocal} className="text-[10px] bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg border font-black uppercase">Save Permanent</button>
+                    <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">👤 My Profile Panel</h3>
+                    <button onClick={saveProfileDataToCloud} className="text-[10px] bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg border font-black uppercase">Update Profile</button>
                   </div>
-                  <div className="space-y-2 text-black">
-                    <input 
-                      type="text" placeholder="Grahak Mobile Phone Number *" 
-                      value={custInfo.phone || ''}
-                      className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
-                      onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})}
-                    />
-                    <input 
-                      type="text" placeholder="Village / City Name *" 
-                      value={custInfo.vill}
-                      className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
-                      onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})}
-                    />
-                    <input 
-                      type="text" placeholder="Famous Landmark / Building" 
-                      value={custInfo.landmark}
-                      className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
-                      onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})}
-                    />
-                    <input 
-                      type="number" placeholder="6-Digit Area PIN Code (Nanoor/Bolpur block) *" 
-                      value={custInfo.pin}
-                      className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold"
-                      onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})}
-                    />
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[9px] font-black text-gray-400 uppercase">Customer Full Name *</label>
+                      <input 
+                        type="text" placeholder="Enter Full Name" 
+                        value={custInfo.name || ''}
+                        className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
+                        onChange={(e) => setCustInfo({...custInfo, name: e.target.value})}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">Gender Selector</label>
+                        <select 
+                          value={custInfo.gender || 'Male'}
+                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold mt-0.5 text-black"
+                          onChange={(e) => setCustInfo({...custInfo, gender: e.target.value})}
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">Mobile Contact Number *</label>
+                        <input 
+                          type="tel" placeholder="10-Digit Mobile" 
+                          value={custInfo.phone || ''}
+                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
+                          onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Tracking line steppers output blocks */}
+                {/* SECTION 2: Saved Shipping Address (Landmark, Vill, City, Pin) */}
+                <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
+                  <div className="flex justify-between items-center border-b pb-2">
+                    <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">📍 Saved Delivery Address</h3>
+                    <button onClick={saveAddressToLocal} className="text-[10px] bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg border font-black uppercase">Save Address</button>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">Village / Locality Name *</label>
+                        <input 
+                          type="text" placeholder="Enter Village name" 
+                          value={custInfo.vill || ''}
+                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
+                          onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">City / Town Name *</label>
+                        <input 
+                          type="text" placeholder="Enter City/Town" 
+                          value={custInfo.city || ''}
+                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
+                          onChange={(e) => setCustInfo({...custInfo, city: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">Famous Landmark</label>
+                        <input 
+                          type="text" placeholder="Near school, temple etc." 
+                          value={custInfo.landmark || ''}
+                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
+                          onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">Area PIN Code *</label>
+                        <input 
+                          type="number" placeholder="6-Digit PIN Code" 
+                          value={custInfo.pin || ''}
+                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
+                          onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 3: My Orders (Order History & Step Track Pipelines) */}
                 <div className="space-y-3">
-                  <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider">📦 My Orders Tracking Pipelines</h3>
+                  <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider flex items-center gap-1.5">📦 My Orders History & Live Tracking</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
                     <div className="p-6 text-center bg-white/40 border border-dashed rounded-2xl text-xs font-bold text-gray-400">
-                      Koi active order record nahi mila.
+                      Koi active purchase history nahi mili bhai!
                     </div>
                   ) : (
                     orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
@@ -853,7 +935,7 @@ export default function App() {
                           <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] shadow-sm font-black border border-emerald-100">{o.status}</span>
                         </div>
                         
-                        {/* Interactive tracking line layout blocks */}
+                        {/* Interactive dynamic progress pipeline slider blocks */}
                         <div className="space-y-1">
                           <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                             <div className="bg-gradient-to-r from-orange-500 to-emerald-500 h-full transition-all duration-500" style={{ width: `${getOrderStatusProgress(o.status)}%` }}></div>
@@ -869,9 +951,12 @@ export default function App() {
                         <div className="text-xs text-gray-600 font-bold border-b pb-1">
                           {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
                         </div>
-                        <p className="text-[10px] font-bold text-emerald-700">Payment: {o.paymentMode || "Online UPI payment"}</p>
-                        <div className="flex justify-between items-center text-xs font-black pt-1">
-                          <span className="text-gray-400">Date: {o.createdAt.split(',')[0]}</span>
+                        <div className="flex justify-between items-center text-[10px] font-bold text-gray-500">
+                          <p className="text-emerald-700">Payment: {o.paymentMode || "Online UPI payment"}</p>
+                          {o.paymentStatus && <p className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[9px]">{o.paymentStatus}</p>}
+                        </div>
+                        <div className="flex justify-between items-center text-xs font-black pt-1 border-t border-dashed">
+                          <span className="text-gray-400">Date: {o.createdAt?.split(',')[0]}</span>
                           <span className="text-orange-600 text-sm">₹{o.totalAmount}</span>
                         </div>
                       </div>
@@ -881,10 +966,10 @@ export default function App() {
               </div>
             )}
 
-            {/* Products selection pipeline matrix grid layout view */}
+            {/* Main grid selection rendering workflow */}
             {activeTab !== "categories" && activeTab !== "account" && (
               <>
-                {/* Category tags indicator sliders */}
+                {/* Horizontal sliders indicators directly embedded */}
                 <div className="flex gap-2 overflow-x-auto px-4 py-2 bg-transparent max-w-md mx-auto no-scrollbar">
                   {categories.map(cat => (
                     <button 
@@ -955,7 +1040,7 @@ export default function App() {
               </>
             )}
 
-            {/* Corporate Footer Architecture Modules */}
+            {/* Corporate Footer System */}
             {activeTab === "shop" && (
               <footer className="mx-4 my-8 pt-6 text-gray-800 space-y-6 mb-28 border-t border-gray-200/60">
                 <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-100 text-black">
@@ -1036,7 +1121,7 @@ export default function App() {
         )}
       </div>
 
-      {/* Special Dual Bottom Admin Navigation Dock (Visible Only when URL Path matches and verifies password) */}
+      {/* Special Dual Bottom Admin Navigation Dock */}
       {isAdminUrl && isAdmin && (
         <div className="fixed bottom-0 inset-x-0 bg-slate-950 text-white border-t border-slate-800 p-2 z-50 flex justify-around items-center rounded-t-3xl shadow-2xl max-w-md mx-auto">
           <button onClick={() => setAdminTab("dashboard")} className={`flex flex-col items-center p-2 text-xs font-black ${adminTab === "dashboard" ? 'text-emerald-400 scale-105' : 'text-slate-500'}`}>
@@ -1085,7 +1170,7 @@ export default function App() {
                 </div>
                 
                 <div className="p-3 bg-amber-50 rounded-xl text-[10px] font-bold text-amber-800 border border-amber-200">
-                  ⚠️ Deliveries are tracked natively via configurations filled inside the Account tab profile fields.
+                  ⚠️ Deliveries are processed using profile criteria saved inside your Account tab Dashboard panel.
                 </div>
               </div>
 
@@ -1205,12 +1290,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Highly Professional Cash Memo Invoice Panel (Flipkart Style One-Click Intent Engine Module Fixed - Customer side Point 4) */}
+      {/* Highly Professional Cash Memo Invoice Panel */}
       {showInvoice && (
         <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">
             
-            {/* Daily Needs Hub Branding */}
             <div className="text-center border-b-2 border-dashed border-gray-200 pb-3 space-y-0.5">
               <h2 className="text-2xl font-black uppercase tracking-tight text-orange-600">
                 DAILY NEEDS HUB
@@ -1223,7 +1307,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Logistics summary indicators */}
             <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 p-3 rounded-xl border border-gray-100">
               <div>
                 <p className="text-gray-400 uppercase font-black text-[8px]">Invoice Framework</p>
@@ -1233,11 +1316,10 @@ export default function App() {
               <div className="text-right">
                 <p className="text-gray-400 uppercase font-black text-[8px]">Shipping Target</p>
                 <p className="font-extrabold text-orange-600 truncate">{custInfo.name}</p>
-                <p className="text-gray-500 truncate font-semibold">{custInfo.vill} (PIN-{custInfo.pin})</p>
+                <p className="text-gray-500 truncate font-semibold">{custInfo.vill}, {custInfo.city} (PIN-{custInfo.pin})</p>
               </div>
             </div>
 
-            {/* Flipkart-Style One-Click Auto UPI Intent Layout mapping parameters */}
             {paymentType === "UPI" ? (
               <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
                 <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ FLIPKART STYLE ONE-CLICK INTENT GATEWAY</span>
@@ -1251,7 +1333,6 @@ export default function App() {
                   />
                 </div>
 
-                {/* Direct Cross Platform Deep Link Handler */}
                 <a 
                   href={getUPIIntentLink()}
                   className="block bg-gradient-to-r from-orange-600 to-red-500 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center uppercase tracking-wide"
@@ -1273,7 +1354,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Product Summary */}
             <div className="space-y-1.5 border-t pt-3 max-h-[15vh] overflow-y-auto pr-1">
               {cart.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center text-[11px] text-gray-700">
@@ -1283,13 +1363,11 @@ export default function App() {
               ))}
             </div>
 
-            {/* Total Balance block */}
             <div className="flex justify-between items-center border-t-2 border-dashed border-gray-200 pt-3 text-sm font-black text-emerald-600 uppercase">
               <span>Gross Total Amount Due:</span>
               <span className="text-base font-black">₹{cartTotal}</span>
             </div>
 
-            {/* Professional Sales Manager Digital Sign */}
             <div className="border-t pt-3 flex flex-col items-end">
               <div className="text-center space-y-0.5 pr-2">
                 <p className="font-serif italic text-sm font-bold text-indigo-700 tracking-wide selection:bg-none">
@@ -1300,7 +1378,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Final Submission */}
             <button 
               onClick={sendWhatsAppNotification} 
               className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-2xl font-black shadow-md text-xs text-center uppercase tracking-wider"

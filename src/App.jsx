@@ -68,7 +68,7 @@ export default function App() {
 
   const [slides, setSlides] = useState([
     { id: 1, img: "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&q=80", text: "⚡ FLASH SALE LIVE: Grab Offers Instantly!" },
-    { id: 2, img: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&q=80", text: "🥤 COLD DRINKS & BEVERAGES: Garmi ka Ilaaj" },
+    { id: 2, img: "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&q=80", text: "🥤 COLD DRINKS & BEVERAGES: Beat the Summer Heat!" },
     { id: 3, img: "https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=500&q=80", text: "🛒 GROCERY ESSENTIALS: Fresh Stock Everyday" },
     { id: 4, img: "https://images.unsplash.com/photo-1506084868230-bb9d95c24759?w=500&q=80", text: "🥛 FRESH DAIRY PRODUCTS: Delivery at Doorstep" },
     { id: 5, img: "https://images.unsplash.com/photo-1543168256-418811576931?w=500&q=80", text: "🥬 FARM FRESH VEGETABLES: 100% Organic" }
@@ -130,7 +130,7 @@ export default function App() {
       } else {
         setUser(null);
         if (!currentUser) {
-          signInAnonymously(auth).catch(e => console.log("Anon auth bypass"));
+          signInAnonymously(auth).catch(e => console.log("Anon authentication active"));
         }
       }
     });
@@ -148,9 +148,13 @@ export default function App() {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const qOrder = collection(db, "orders");
-    const unsubOrder = onSnapshot(qOrder, (snapshot) => {
-      setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    // Modified order listener to sort by dynamic creation sequence
+    const qOrder = query(collection(db, "orders"), orderBy("timestampServer", "desc"));
+    const unsubOrder = onSnapshot(collection(db, "orders"), (snapshot) => {
+      // Manual internal fallback sort tracking parameters to ensure new orders appear on top
+      const sortedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      sortedDocs.sort((a, b) => new Date(b.rawDate || b.createdAt) - new Date(a.rawDate || a.createdAt));
+      setOrders(sortedDocs);
     });
 
     const qNotif = collection(db, "notifications");
@@ -189,24 +193,24 @@ export default function App() {
   };
 
   const saveProfileDataToCloud = async () => {
-    if (!custInfo.name || !custInfo.phone) return alert("Profile ke liye Name aur Phone parameters mandatory hain!");
+    if (!custInfo.name || !custInfo.phone) return alert("Profile full name and phone number fields are mandatory!");
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
-    alert("Profile parameters updated inside live database successfully!");
+    alert("Profile configurations synchronized securely!");
   };
 
   const saveAddressToLocal = async () => {
-    if (!custInfo.vill || !custInfo.pin || !custInfo.city) return alert("Village, City aur Area PIN Code zaroori hain!");
+    if (!custInfo.vill || !custInfo.pin || !custInfo.city) return alert("Village, City, and PIN Code are mandatory elements!");
     if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return alert(`Sorry! We do not deliver to ${custInfo.pin} yet. Please enter Nanoor/Bolpur verified pin code.`);
+      return alert(`Delivery unavailable for area PIN: ${custInfo.pin}. Please use verified Bolpur or Nanoor block regions.`);
     }
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
-    alert("Shipping logistics coordinates verified and saved securely!");
+    alert("Shipping delivery address profiles verified and locked!");
   };
 
   const getDiscountedPrice = (price, discount) => {
@@ -215,11 +219,11 @@ export default function App() {
   };
 
   const addToCart = (p) => {
-    if (p.stock <= 0) return alert("OutOfStock: Item bacha nahi hai!");
+    if (p.stock <= 0) return alert("Requested product payload is currently out of stock!");
     const exist = cart.find(x => x.id === p.id);
     let updatedCart = [];
     if (exist) {
-      if (exist.qty >= p.stock) return alert("Stock limit reached!");
+      if (exist.qty >= p.stock) return alert("Inventory limit reached for this specific item!");
       updatedCart = cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty + 1 } : x);
     } else {
       updatedCart = [...cart, { ...p, qty: 1 }];
@@ -235,7 +239,7 @@ export default function App() {
     if (nextQty <= 0) {
       updatedCart = cart.filter(x => x.id !== id);
     } else {
-      if (delta > 0 && nextQty > item.stock) return alert("Stock limit exceeded!");
+      if (delta > 0 && nextQty > item.stock) return alert("Maximum inventory parameters exceeded!");
       updatedCart = cart.map(x => x.id === id ? { ...item, qty: nextQty } : x);
     }
     syncCart(updatedCart);
@@ -264,14 +268,14 @@ export default function App() {
         images: imgArray.length > 0 && imgArray[0] !== "" ? imgArray : ["📦"], 
         category: el.itemCategory.value,
         offerTag: el.itemOfferTag.value || "None",
-        specifications: el.itemSpecs.value || "No specifications loaded.",
+        specifications: el.itemSpecs.value || "Premium quality guaranteed checked asset.",
         isBestSeller: el.bestSeller.checked,
         isNewArrival: el.newArrival.checked
       });
       e.target.reset();
-      alert("Saaman jud gaya!");
+      alert("Product batch deployed successfully!");
     } catch (error) {
-      alert("Database error!");
+      alert("Database engine write failure!");
     }
   };
 
@@ -285,8 +289,8 @@ export default function App() {
         createdAt: new Date().toLocaleTimeString()
       });
       e.target.reset();
-      alert("Notification Broadcasted Live!");
-    } catch(err) { alert("Error broadcasting notification"); }
+      alert("Broadcast alert synchronization completed!");
+    } catch(err) { alert("Notification push matrix error."); }
   };
 
   const updateProductData = async (id, field, value) => {
@@ -299,12 +303,12 @@ export default function App() {
 
   const updateOrderStatus = async (id, nextStatus) => {
     await updateDoc(doc(db, "orders", id), { status: nextStatus });
-    alert("Order status updated successfully!");
+    alert("Pipeline milestone status updated successfully!");
   };
 
   const updateOrderPaymentStatus = async (id, nextPayStatus) => {
     await updateDoc(doc(db, "orders", id), { paymentStatus: nextPayStatus });
-    alert("Payment verification status updated inside cloud database!");
+    alert("Payment parameters verified and recorded permanently!");
   };
 
   const getSalesAnalytics = () => {
@@ -347,10 +351,10 @@ export default function App() {
 
   const handleCheckoutInit = async () => {
     if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone || !custInfo.city) {
-      return alert("Naam, Phone, Village, City aur PIN Code bharna zaruri hai! Please check your profile configurations.");
+      return alert("Name, Phone, Village, City and PIN Code are mandatory fields. Please update configurations inside profile cards.");
     }
     if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return alert(`We cannot process this order! Currently we do not deliver to PIN: ${custInfo.pin}. Please use Bolpur or Nanoor valid address.`);
+      return alert(`Service unreachable for PIN: ${custInfo.pin}. Please use alternative Bolpur or Nanoor regional address.`);
     }
 
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
@@ -376,7 +380,7 @@ export default function App() {
       }
 
       if (outOfStockFlag) {
-        return alert(`Sorry! ${blockedItemName} is out of stock or requested quantity exceeds available inventory.`);
+        return alert(`Transaction aborted: ${blockedItemName} has insufficient stock thresholds remaining.`);
       }
 
       await batch.commit();
@@ -392,13 +396,14 @@ export default function App() {
         paymentStatus: paymentType === "UPI" ? "Awaiting Admin Verification ⏳" : "COD Pending Delivery",
         utr: paymentType === "UPI" ? "AUTO-UPI-INTENT" : "COD Mode Verification Complete",
         status: "Pending ⏳",
-        createdAt: new Date().toLocaleString()
+        createdAt: new Date().toLocaleString(),
+        rawDate: new Date().toISOString()
       });
       
       setCurrentOrderId(docRef.id);
       setShowInvoice(true); 
     } catch (e) {
-      alert("Checkout error! Please try again.");
+      alert("Checkout sequence verification matrix failure.");
     }
   };
 
@@ -409,17 +414,17 @@ export default function App() {
         paymentStatus: "COD Pending Delivery",
         utr: "COD Mode Verification Complete"
       });
-      alert("COD Mode selected successfully for this receipt!");
+      alert("Cash on Delivery parameters accepted successfully!");
     } catch(err) {
-      console.log("Error updating checkout node");
+      console.log("Database update node malfunction");
     }
   };
 
   const sendWhatsAppNotification = () => {
     const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
-    const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : "UPI Intent Flow Initialized";
-    const msg = `Naya Order & Status: ${modeLabel} - Daily Needs Hub\nOrder ID: ${currentOrderId}\nNaam: ${custInfo.name}\nPhone: ${custInfo.phone}\nAddress: ${fullAddressString}\nItems: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
+    const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : "UPI Intent Flow Complete";
+    const msg = `New Order Confirmed - Daily Needs Hub\nOrder ID: ${currentOrderId}\nCustomer Name: ${custInfo.name}\nContact: ${custInfo.phone}\nAddress: ${fullAddressString}\nItems Summary: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     
     setShowInvoice(false);
@@ -461,7 +466,7 @@ export default function App() {
       content = `We want you to shop with absolute confidence. Our easy refund criteria includes:\n\n1. Fresh Goods (Dairy, Vegetables): Eligible for immediate replacement or refund within 3 hours of delivery if found damaged or stale.\n2. Packed Items: Damaged packets or expired batches can be returned at the time of delivery itself.\n3. Refund Method: Approved refunds are credited instantly within 24 hours back to your original payment mode or UPI address.`;
     } else if (type === 'terms') {
       title = "Terms & Conditions 📜";
-      content = `Welcome to Daily Needs Hub. By accessing our platform, you agree to these basic guidelines:\n\n1. Pricing: All rates listed on the application are verified and calculated accurately.\n2. Service Area: Currently active across Bolpur, Nanoor, Papuri, and adjacent Birbhum regions.\n3. Order Placement: Orders are confirmed once details are logged on WhatsApp or processed through the cash checkout invoice window. Fraudulent activities or dummy checks will result in account restriction.`;
+      content = `Welcome to Daily Needs Hub. By accepting our platform frameworks, you express consent to our regulatory standard guidelines:\n\n1. Pricing: All rates listed on the application are verified and calculated accurately.\n2. Service Area: Currently active across Bolpur, Nanoor, Papuri, and adjacent Birbhum regions.\n3. Order Placement: Orders are confirmed once details are logged on WhatsApp or processed through the cash checkout invoice window. Fraudulent activities or dummy checks will result in account restriction.`;
     } else if (type === 'faq') {
       title = "Help & FAQs Desk ❓";
       content = `Q1. What are your delivery timings?\nAns: We deliver daily from 7:00 AM to 9:00 PM.\n\nQ2. Is there a minimum order limit?\nAns: No, you can order as little or as much as you like!\n\nQ3. How can I pay?\nAns: You can pay instantly using any mobile app like Google Pay, PhonePe, Paytm, or choose cash settlement upon arrival.\n\nQ4. How do I track my active orders?\nAns: Just navigate to the 'Account' tab on the bottom menu bar to see live status updates.`;
@@ -537,7 +542,7 @@ export default function App() {
                <h2 className="text-xl font-bold mb-2 text-orange-600 text-center uppercase tracking-wider">Secure Access Node</h2>
                {!isAdmin ? (
                  <div className="space-y-4">
-                   <p className="text-[11px] text-center font-bold text-gray-400">Enter high-grade secure protocol password key to active structural dashboards</p>
+                   <p className="text-[11px] text-center font-bold text-gray-400">Enter high-grade secure protocol password key to activate structural dashboards</p>
                    <input 
                      type="password" 
                      placeholder="Enter Control Key Password" 
@@ -635,7 +640,7 @@ export default function App() {
                                 <div className="flex justify-between items-start">
                                   <span className="text-xs font-black text-gray-800 truncate max-w-[70%]">{p.name}</span>
                                   <button onClick={async () => { if(window.confirm("Delete asset item?")) await deleteDoc(doc(db, "products", p.id)); }} className="text-[10px] text-red-500 font-bold underline">Delete</button>
-                                </div>
+                                </div >
                                 <div className="flex justify-between items-center pt-1 border-t border-dashed">
                                   <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-bold">
                                     <span>MRP: ₹{p.price}</span>
@@ -655,7 +660,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Orders Pipeline Engine Room (Admin Tab 4) */}
+                    {/* Orders Pipeline Engine Room (Admin Tab 4 - Restored Delete Actions & Sorted Logic View) */}
                     {adminTab === "orders" && (
                       <div className="space-y-3 text-black">
                         <div className="bg-blue-50 p-3 rounded-2xl border border-blue-200">
@@ -668,7 +673,7 @@ export default function App() {
                                 <span>ID: ...{ord.id.slice(-6)}</span>
                                 <span className="text-orange-600">₹{ord.totalAmount}</span>
                               </div>
-                              <p><b>Grahak:</b> {ord.customerName}</p>
+                              <p><b>Customer:</b> {ord.customerName}</p>
                               <p className="text-gray-600"><b>Address:</b> {ord.address}</p>
                               <p className="text-blue-700 font-bold"><b>Mode Selection:</b> {ord.paymentMode || "Online UPI payment"}</p>
                               <div className="flex items-center gap-1.5 font-bold">
@@ -684,12 +689,20 @@ export default function App() {
                                   📞 Call Buyer
                                 </a>
 
+                                {/* Restored permanent record delete capabilities block */}
+                                <button 
+                                  onClick={async () => { if(window.confirm("Permanently wipe this order statement history?")) await deleteDoc(doc(db, "orders", ord.id)); }}
+                                  className="text-[10px] text-red-500 border border-red-200 px-2 py-1.5 rounded-xl font-bold bg-red-50 hover:bg-red-100 transition-all"
+                                >
+                                  Wipe 🗑️
+                                </button>
+
                                 {ord.paymentStatus?.includes("Awaiting") && (
                                   <button 
                                     onClick={() => updateOrderPaymentStatus(ord.id, "Approved & Paid ✅")}
                                     className="bg-emerald-600 text-white font-black text-[9px] px-2 py-1.5 rounded-xl uppercase tracking-wider shadow"
                                   >
-                                    ✓ Approve Payment
+                                    ✓ Approve
                                   </button>
                                 )}
                                 
@@ -715,7 +728,7 @@ export default function App() {
                       <div className="bg-white p-2 rounded-3xl">
                         <form onSubmit={sendBroadcastNotification} className="space-y-2">
                           <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider">📢 Inject Broadcast Announcement</h3>
-                          <input name="notifText" placeholder="Kya message push karna chahte hain?" className="w-full p-2.5 text-xs border bg-gray-50 rounded-xl text-black font-semibold" required />
+                          <input name="notifText" placeholder="Enter broadcast message payload" className="w-full p-2.5 text-xs border bg-gray-50 rounded-xl text-black font-semibold" required />
                           <button type="submit" className="w-full bg-slate-900 text-white font-black p-2.5 text-xs rounded-xl shadow">Broadcast Alert</button>
                         </form>
                       </div>
@@ -734,8 +747,8 @@ export default function App() {
               <>
                 <div className="px-4 mb-4">
                   <div className="bg-gradient-to-r from-orange-500 via-emerald-500 to-blue-600 p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
-                    <h2 className="text-2xl font-black mb-1">Hello, {custInfo.name || "Guest Grahak"}! 👋</h2>
-                    <p className="text-xs opacity-90 italic">Fresh Items, Best Price, Seedha Ghar Tak.</p>
+                    <h2 className="text-2xl font-black mb-1">Hello, {custInfo.name || "Guest Customer"}! 👋</h2>
+                    <p className="text-xs opacity-90 italic">Fresh Items, Best Price, Straight to Your Doorstep.</p>
                   </div>
                 </div>
 
@@ -798,7 +811,7 @@ export default function App() {
               </div>
             )}
 
-            {/* UPGRADED PROFESSIONAL CUSTOMER ACCOUNT MODULE (My Profile + Saved Address + My Orders) */}
+            {/* UPGRADED PROFESSIONAL CUSTOMER ACCOUNT MODULE (English Translations Set) */}
             {activeTab === "account" && (
               <div className="px-4 space-y-6 text-black">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
@@ -816,7 +829,7 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <h4 className="font-extrabold text-sm text-gray-800">Welcome, Guest Grahak</h4>
+                        <h4 className="font-extrabold text-sm text-gray-800">Welcome, Guest Customer</h4>
                         <p className="text-[10px] text-gray-400 font-bold">Connect profile for cloud persistent cart sync</p>
                       </>
                     )}
@@ -925,7 +938,7 @@ export default function App() {
                   <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider flex items-center gap-1.5">📦 My Orders History & Live Tracking</h3>
                   {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
                     <div className="p-6 text-center bg-white/40 border border-dashed rounded-2xl text-xs font-bold text-gray-400">
-                      Koi active purchase history nahi mili bhai!
+                      No verified active purchase history record discovered.
                     </div>
                   ) : (
                     orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
@@ -1040,16 +1053,16 @@ export default function App() {
               </>
             )}
 
-            {/* Corporate Footer System */}
+            {/* Corporate Footer Architecture Modules */}
             {activeTab === "shop" && (
               <footer className="mx-4 my-8 pt-6 text-gray-800 space-y-6 mb-28 border-t border-gray-200/60">
                 <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-100 text-black">
                   <h4 className="text-xs font-black text-emerald-800 uppercase tracking-wider mb-2 text-center">🏆 Why Choose Daily Needs Hub</h4>
                   <div className="grid grid-cols-2 gap-3 text-[10px] font-bold">
-                    <div className="flex items-center gap-1">⚡ <span><b>Fast Delivery:</b> Seedha aapke ghar tak shipping</span></div>
-                    <div className="flex items-center gap-1">💰 <span><b>Best Price:</b> Subse sasta rate market se kam</span></div>
-                    <div className="flex items-center gap-1">🛡️ <span><b>Secure Payment:</b> Verified Instant Engine</span></div>
-                    <div className="flex items-center gap-1">⏰ <span><b>24x7 Support:</b> Hamesha aapki sewa me tayaar</span></div>
+                    <div className="flex items-center gap-1">⚡ <span><b>Fast Delivery:</b> Straight to your doorstep logistics</span></div>
+                    <div className="flex items-center gap-1">💰 <span><b>Best Price:</b> Most budget friendly pricing structures</span></div>
+                    <div className="flex items-center gap-1">🛡️ <span><b>Secure Payment:</b> Verified Instant Gateways</span></div>
+                    <div className="flex items-center gap-1">⏰ <span><b>24x7 Support:</b> Always ready to assist customers</span></div>
                   </div>
                 </div>
 
@@ -1081,7 +1094,7 @@ export default function App() {
                     <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">
                       <span>🌐</span> Facebook Official
                     </a>
-                    <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-100 shadow-sm">
+                    <a href="https://indigo.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-100 shadow-sm">
                       <span>📸</span> Instagram Connect
                     </a>
                   </div>
@@ -1177,7 +1190,7 @@ export default function App() {
               {/* Advanced Cart Quantity Controls */}
               <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-1">
                 {cart.length === 0 ? (
-                  <p className="text-xs text-center text-gray-400 font-bold py-10">Aapka cart khali hai bhai!</p>
+                  <p className="text-xs text-center text-gray-400 font-bold py-10">Your cart drawer is completely empty.</p>
                 ) : (
                   cart.map((item, index) => (
                     <div key={index} className="flex justify-between items-center py-2.5 border-b text-xs">
@@ -1236,7 +1249,7 @@ export default function App() {
               </p>
             </div>
 
-            <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); alert("Added to Bag!"); }} className="w-full bg-orange-600 text-white font-black py-3 rounded-xl text-xs uppercase shadow">
+            <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); alert("Added to cart database!"); }} className="w-full bg-orange-600 text-white font-black py-3 rounded-xl text-xs uppercase shadow">
               Add This Item to Bag
             </button>
           </div>
@@ -1252,7 +1265,7 @@ export default function App() {
               <button onClick={() => setIsWishlistOpen(false)} className="text-xs font-bold text-gray-400">X</button>
             </div>
             {wishlist.length === 0 ? (
-              <p className="text-xs font-bold text-center text-gray-400 py-10">Koi item favorite nahi kiya gaya.</p>
+              <p className="text-xs font-bold text-center text-gray-400 py-10">No items bookmarked inside your favorites list parameters.</p>
             ) : (
               wishlist.map(w => (
                 <div key={w.id} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded-xl border">
@@ -1277,7 +1290,7 @@ export default function App() {
               <button onClick={() => setIsNotifOpen(false)} className="text-xs font-bold text-gray-400">X</button>
             </div>
             {notifications.length === 0 ? (
-              <p className="text-xs font-bold text-center text-gray-400 py-10">Koi naya message nahi mila.</p>
+              <p className="text-xs font-bold text-center text-gray-400 py-10">No newly synchronized notifications logs encountered.</p>
             ) : (
               notifications.map(n => (
                 <div key={n.id} className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-xs space-y-1">
@@ -1323,7 +1336,7 @@ export default function App() {
             {paymentType === "UPI" ? (
               <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
                 <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ FLIPKART STYLE ONE-CLICK INTENT GATEWAY</span>
-                <p className="text-[10px] text-gray-600 font-bold leading-tight">Niche click karte hi Google Pay/PhonePe open ho jayega. Back aate hi order confirm ho jayega!</p>
+                <p className="text-[10px] text-gray-600 font-bold leading-tight">Click the link below to initialize Google Pay / PhonePe securely. Order completes once redirected!</p>
                 
                 <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
                   <img 
@@ -1344,7 +1357,7 @@ export default function App() {
               <div className="p-4 bg-emerald-50/80 border-2 border-dashed border-emerald-300 rounded-2xl text-center space-y-2 shadow-inner">
                 <span className="text-[9px] bg-emerald-600 text-white px-3 py-0.5 rounded-full font-black uppercase tracking-wider">💵 CASH ON DELIVERY MODE</span>
                 <p className="text-xs font-black text-emerald-900 pt-1">No advance payment required!</p>
-                <p className="text-[11px] text-emerald-700 font-medium px-2">Aapka saaman packed hone ke baad delivery agent ko cash ya physical upi se payment karein jab saaman ghar pahuche.</p>
+                <p className="text-[11px] text-emerald-700 font-medium px-2">Please handover cash equivalent balance or execute mobile UPI transfers directly to the shipping carrier asset once products arrive safely.</p>
                 <button 
                   onClick={confirmCODModeSelection} 
                   className="mt-1 bg-white text-emerald-700 font-bold border border-emerald-300 px-3 py-1 text-[10px] rounded-lg shadow-sm"

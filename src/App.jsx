@@ -139,7 +139,6 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
         setUser(currentUser);
-        setCustInfo(prev => ({ ...prev, name: prev.name || currentUser.displayName || '' }));
       } else {
         setUser(null);
         if (!currentUser) {
@@ -190,6 +189,13 @@ export default function App() {
       const result = await signInWithPopup(auth, googleProvider);
       if(result.user) {
         setUser(result.user);
+        // Load data on successful login fallback allocation
+        const profileDoc = await getDoc(doc(db, "profiles", result.user.uid));
+        if (profileDoc.exists()) {
+          setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
+        } else {
+          setCustInfo(prev => ({ ...prev, name: result.user.displayName || '' }));
+        }
       }
     } catch (error) {
       alert("Login Error: " + error.message);
@@ -211,7 +217,7 @@ export default function App() {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
-    alert("Profile configurations synchronized securely!");
+    alert("Profile parameters updated and saved successfully!");
   };
 
   const saveAddressToLocal = async () => {
@@ -362,12 +368,10 @@ export default function App() {
     }
   });
 
-  // Professional Store Timing Guard Validation Handler (Point 3)
+  // Professional Store Timing Guard Validation Handler
   const checkOperationalHours = () => {
     const currentHour = new Date().getHours();
-    // Allow admin bypass parameter check
     if (isAdmin) return true; 
-    // Constrain check block: 7 AM (7) to 9 PM (21)
     if (currentHour < 7 || currentHour >= 21) {
       return false;
     }
@@ -375,7 +379,6 @@ export default function App() {
   };
 
   const handleCheckoutInit = async () => {
-    // Invoke operation hour checker guard criteria
     if (!checkOperationalHours()) {
       return alert("Store Closed! Daily Needs Hub accepting orders strictly between 7:00 AM and 9:00 PM. Please visit us tomorrow morning!");
     }
@@ -470,7 +473,7 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Upgraded Dynamic Emoji Allocation Handler (Point 2)
+  // Upgraded Dynamic Emoji Allocation Handler
   const getCategoryEmoji = (cat) => {
     switch(cat) {
       case 'All': return '🛍️';
@@ -551,17 +554,6 @@ export default function App() {
                Login
              </button>
            )}
-           <button onClick={() => {
-             if(!isAdmin) {
-               const verifyAdminPass = prompt("Enter Security Code Node:");
-               if(verifyAdminPass === 'Younus@968687') { setIsAdmin(true); setAdminTab("dashboard"); }
-             } else {
-               setIsAdmin(false);
-               setActiveTab("shop");
-             }
-           }} className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black tracking-wider transition-all uppercase ${isAdmin ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
-             {isAdmin ? "Exit Control" : "🔑 Admin"}
-           </button>
            <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs text-black">{darkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
@@ -1039,7 +1031,7 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* SKELETON LOADERS FOR PRODUCT GRID FLOW (Point 1) */}
+                {/* SKELETON LOADERS FOR PRODUCT GRID FLOW */}
                 {isProductsLoading ? (
                   <main className="p-4 grid grid-cols-2 gap-4">
                     {[1, 2, 3, 4].map(idx => (

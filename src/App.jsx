@@ -20,7 +20,17 @@ const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-const categories = ["All", "Dairy", "Beverages", "Snacks", "Vegetables", "Others"];
+// Upgraded New Premium Categories List Layout
+const categories = [
+  "All", 
+  "Dairy & Milk", 
+  "Cold drinks & Beverages", 
+  "Snacks & Munchies", 
+  "Chocolates & Sweets", 
+  "Personal care", 
+  "Home Daily Needs & Grocery"
+];
+
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack", "Flash Sale"];
 const BRAND_LOGO_URL = "/logo.png"; 
 const MY_UPI_ID = "8637589429-3@ybl"; 
@@ -33,6 +43,9 @@ export default function App() {
   const [wishlist, setWishlist] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [user, setUser] = useState(null);
+  
+  // App Loader State for Skeleton rendering mapping hook
+  const [isProductsLoading, setIsProductsLoading] = useState(true);
   
   // Isolated Navigation Rules & Security Matrix States
   const [isAdmin, setIsAdmin] = useState(false);
@@ -146,12 +159,12 @@ export default function App() {
     const qProd = query(collection(db, "products"), orderBy("name"));
     const unsubProd = onSnapshot(qProd, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setIsProductsLoading(false); // Disable skeleton loaders once snapshots resolve
+    }, (error) => {
+      setIsProductsLoading(false);
     });
 
-    // Modified order listener to sort by dynamic creation sequence
-    const qOrder = query(collection(db, "orders"), orderBy("timestampServer", "desc"));
     const unsubOrder = onSnapshot(collection(db, "orders"), (snapshot) => {
-      // Manual internal fallback sort tracking parameters to ensure new orders appear on top
       const sortedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       sortedDocs.sort((a, b) => new Date(b.rawDate || b.createdAt) - new Date(a.rawDate || a.createdAt));
       setOrders(sortedDocs);
@@ -349,7 +362,24 @@ export default function App() {
     }
   });
 
+  // Professional Store Timing Guard Validation Handler (Point 3)
+  const checkOperationalHours = () => {
+    const currentHour = new Date().getHours();
+    // Allow admin bypass parameter check
+    if (isAdmin) return true; 
+    // Constrain check block: 7 AM (7) to 9 PM (21)
+    if (currentHour < 7 || currentHour >= 21) {
+      return false;
+    }
+    return true;
+  };
+
   const handleCheckoutInit = async () => {
+    // Invoke operation hour checker guard criteria
+    if (!checkOperationalHours()) {
+      return alert("Store Closed! Daily Needs Hub accepting orders strictly between 7:00 AM and 9:00 PM. Please visit us tomorrow morning!");
+    }
+
     if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone || !custInfo.city) {
       return alert("Name, Phone, Village, City and PIN Code are mandatory fields. Please update configurations inside profile cards.");
     }
@@ -440,13 +470,16 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Upgraded Dynamic Emoji Allocation Handler (Point 2)
   const getCategoryEmoji = (cat) => {
     switch(cat) {
       case 'All': return '🛍️';
-      case 'Dairy': return '🥛';
-      case 'Beverages': return '🥤';
-      case 'Snacks': return '🍿';
-      case 'Vegetables': return '🥬';
+      case 'Dairy & Milk': return '🥛';
+      case 'Cold drinks & Beverages': return '🥤';
+      case 'Snacks & Munchies': return '🍿';
+      case 'Chocolates & Sweets': return '🍫';
+      case 'Personal care': return '🧼';
+      case 'Home Daily Needs & Grocery': return '🏠';
       default: return '📦';
     }
   };
@@ -518,6 +551,17 @@ export default function App() {
                Login
              </button>
            )}
+           <button onClick={() => {
+             if(!isAdmin) {
+               const verifyAdminPass = prompt("Enter Security Code Node:");
+               if(verifyAdminPass === 'Younus@968687') { setIsAdmin(true); setAdminTab("dashboard"); }
+             } else {
+               setIsAdmin(false);
+               setActiveTab("shop");
+             }
+           }} className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black tracking-wider transition-all uppercase ${isAdmin ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-700'}`}>
+             {isAdmin ? "Exit Control" : "🔑 Admin"}
+           </button>
            <button onClick={() => setDarkMode(!darkMode)} className="p-2 bg-gray-100 rounded-full text-xs text-black">{darkMode ? '☀️' : '🌙'}</button>
         </div>
       </header>
@@ -622,7 +666,7 @@ export default function App() {
                         <textarea name="itemSpecs" placeholder="Product Details / Specifications" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" rows="2" />
                         
                         <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50 text-xs font-black">
-                          {categories.slice(1).map(c => <option key={c} value={c}>{c} Section</option>)}
+                          {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                         <button type="submit" className="bg-orange-600 text-white p-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow">ADD PRODUCT TO LIVE NODES</button>
                       </form>
@@ -811,7 +855,7 @@ export default function App() {
               </div>
             )}
 
-            {/* UPGRADED PROFESSIONAL CUSTOMER ACCOUNT MODULE (English Translations Set) */}
+            {/* UPGRADED PROFESSIONAL CUSTOMER ACCOUNT MODULE */}
             {activeTab === "account" && (
               <div className="px-4 space-y-6 text-black">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
@@ -995,61 +1039,75 @@ export default function App() {
                   ))}
                 </div>
 
-                <main className="p-4 grid grid-cols-2 gap-4">
-                  {filtered.map(p => {
-                    const hasDiscount = p.discount > 0;
-                    const finalPrice = getDiscountedPrice(p.price, p.discount);
-                    const isWish = wishlist.find(x => x.id === p.id);
-                    const pImages = p.images || [p.img || "📦"];
-                    const isOutOfStock = p.stock <= 0;
-                    return (
-                      <div key={p.id} className="bg-white p-3 rounded-[2rem] shadow-md border-2 border-orange-100/60 relative flex flex-col justify-between text-black">
-                         <div className="absolute top-3 left-3 Combined-Node z-10 flex flex-col gap-1">
-                            {isOutOfStock ? (
-                              <span className="bg-red-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">Out of Stock</span>
-                            ) : (
-                              <>
-                                {p.offerTag && p.offerTag !== "None" && <span className="bg-emerald-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{p.offerTag}</span>}
-                                {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">{p.discount}% OFF</span>}
-                              </>
-                            )}
-                         </div>
-                         
-                         <button onClick={() => toggleWishlist(p)} className="absolute top-3 right-3 z-10 p-1.5 bg-white/80 backdrop-blur-sm rounded-full shadow-sm text-xs">
-                           {isWish ? "❤️" : "🤍"}
-                         </button>
+                {/* SKELETON LOADERS FOR PRODUCT GRID FLOW (Point 1) */}
+                {isProductsLoading ? (
+                  <main className="p-4 grid grid-cols-2 gap-4">
+                    {[1, 2, 3, 4].map(idx => (
+                      <div key={idx} className="bg-white p-4 rounded-[2rem] border-2 border-slate-100/60 flex flex-col justify-between animate-pulse">
+                        <div className="h-32 bg-slate-200 rounded-2xl w-full mb-3"></div>
+                        <div className="h-4 bg-slate-200 rounded w-3/4 mx-auto mb-2"></div>
+                        <div className="h-3 bg-slate-200 rounded w-1/2 mx-auto mb-3"></div>
+                        <div className="h-8 bg-slate-200 rounded-xl w-full"></div>
+                      </div>
+                    ))}
+                  </main>
+                ) : (
+                  <main className="p-4 grid grid-cols-2 gap-4">
+                    {filtered.map(p => {
+                      const hasDiscount = p.discount > 0;
+                      const finalPrice = getDiscountedPrice(p.price, p.discount);
+                      const isWish = wishlist.find(x => x.id === p.id);
+                      const pImages = p.images || [p.img || "📦"];
+                      const isOutOfStock = p.stock <= 0;
+                      return (
+                        <div key={p.id} className="bg-white p-3 rounded-[2rem] shadow-md border-2 border-orange-100/60 relative flex flex-col justify-between text-black">
+                           <div className="absolute top-3 left-3 Combined-Node z-10 flex flex-col gap-1">
+                              {isOutOfStock ? (
+                                <span className="bg-red-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">Out of Stock</span>
+                              ) : (
+                                <>
+                                  {p.offerTag && p.offerTag !== "None" && <span className="bg-emerald-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded uppercase">{p.offerTag}</span>}
+                                  {hasDiscount && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">{p.discount}% OFF</span>}
+                                </>
+                              )}
+                           </div>
+                           
+                           <button onClick={() => toggleWishlist(p)} className="absolute top-3 right-3 z-10 p-1.5 bg-white/80 backdrop-blur-sm rounded-full shadow-sm text-xs">
+                             {isWish ? "❤️" : "🤍"}
+                           </button>
 
-                         <div onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="h-32 flex items-center justify-center mb-2 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden cursor-pointer">
-                           {pImages[0].includes('http') ? <img src={pImages[0]} alt="product" className="h-full w-full object-cover rounded-2xl" /> : <span className="text-5xl">{pImages[0]}</span>}
-                         </div>
+                           <div onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="h-32 flex items-center justify-center mb-2 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden cursor-pointer">
+                             {pImages[0].includes('http') ? <img src={pImages[0]} alt="product" className="h-full w-full object-cover rounded-2xl" /> : <span className="text-5xl">{pImages[0]}</span>}
+                           </div>
 
-                         <div className="px-1 text-center flex-1 flex flex-col justify-between">
-                           <div>
-                             <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="font-extrabold text-gray-800 text-xs truncate cursor-pointer underline">{p.name}</h3>
-                             <div className="flex items-center justify-center gap-2 mt-0.5">
-                               <span className="text-base font-black text-orange-600">₹{finalPrice}</span>
-                               {hasDiscount && <span className="text-[10px] text-gray-400 line-through font-bold">₹{p.price}</span>}
+                           <div className="px-1 text-center flex-1 flex flex-col justify-between">
+                             <div>
+                               <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="font-extrabold text-gray-800 text-xs truncate cursor-pointer underline">{p.name}</h3>
+                               <div className="flex items-center justify-center gap-2 mt-0.5">
+                                 <span className="text-base font-black text-orange-600">₹{finalPrice}</span>
+                                 {hasDiscount && <span className="text-[10px] text-gray-400 line-through font-bold">₹{p.price}</span>}
+                               </div>
+                             </div>
+                             <div className="mt-2 space-y-1">
+                               {isOutOfStock ? (
+                                 <button disabled className="w-full py-2 bg-gray-200 text-gray-400 rounded-xl text-[10px] font-bold cursor-not-allowed">OUT OF STOCK</button>
+                               ) : (
+                                 <>
+                                   <button onClick={() => { addToCart(p); alert("Added to cart drawer!"); }} className="w-full py-1.5 bg-gray-100 text-gray-700 font-extrabold rounded-xl text-[10px] border border-gray-200 shadow-sm active:scale-95 transition-all">
+                                     ADD TO CART
+                                   </button>
+                                   <button onClick={() => { addToCart(p); setIsCartOpen(true); }} className="w-full py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black rounded-xl text-[10px] shadow-sm active:scale-95 transition-all">
+                                     ORDER NOW
+                                   </button>
+                                 </>
+                               )}
                              </div>
                            </div>
-                           <div className="mt-2 space-y-1">
-                             {isOutOfStock ? (
-                               <button disabled className="w-full py-2 bg-gray-200 text-gray-400 rounded-xl text-[10px] font-bold cursor-not-allowed">OUT OF STOCK</button>
-                             ) : (
-                               <>
-                                 <button onClick={() => { addToCart(p); alert("Added to cart drawer!"); }} className="w-full py-1.5 bg-gray-100 text-gray-700 font-extrabold rounded-xl text-[10px] border border-gray-200 shadow-sm active:scale-95 transition-all">
-                                   ADD TO CART
-                                 </button>
-                                 <button onClick={() => { addToCart(p); setIsCartOpen(true); }} className="w-full py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black rounded-xl text-[10px] shadow-sm active:scale-95 transition-all">
-                                   ORDER NOW
-                                 </button>
-                               </>
-                             )}
-                           </div>
-                         </div>
-                      </div>
-                    );
-                  })}
-                </main>
+                        </div>
+                      );
+                    })}
+                  </main>
+                )}
               </>
             )}
 

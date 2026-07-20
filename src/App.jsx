@@ -20,15 +20,17 @@ const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Upgraded New Premium Categories List Layout
+// Upgraded New Premium Categories List Layout with Footwear Integration
 const categories = [
   "All", 
   "Dairy & Milk", 
   "Cold drinks & Beverages", 
+  "Ice-Creams & Frozen",
   "Snacks & Munchies", 
   "Chocolates & Sweets", 
-  "Personal care", 
-  "Home Daily Needs & Grocery"
+  "Home Daily Needs & Grocery",
+  "Shoes & Footwear",
+  "Personal care"
 ];
 
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack", "Flash Sale"];
@@ -67,6 +69,9 @@ export default function App() {
   const [legalModal, setLegalModal] = useState({ isOpen: false, title: '', content: '' });
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [flashTime, setFlashTime] = useState(3600); 
+
+  // Client-side transient footwear selection metadata hook mapping item variants
+  const [selectedSizes, setSelectedSizes] = useState({});
 
   // Combined state management for Profile and Address parameters
   const [custInfo, setCustInfo] = useState({ 
@@ -158,7 +163,7 @@ export default function App() {
     const qProd = query(collection(db, "products"), orderBy("name"));
     const unsubProd = onSnapshot(qProd, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setIsProductsLoading(false); // Disable skeleton loaders once snapshots resolve
+      setIsProductsLoading(false); 
     }, (error) => {
       setIsProductsLoading(false);
     });
@@ -189,7 +194,6 @@ export default function App() {
       const result = await signInWithPopup(auth, googleProvider);
       if(result.user) {
         setUser(result.user);
-        // Load data on successful login fallback allocation
         const profileDoc = await getDoc(doc(db, "profiles", result.user.uid));
         if (profileDoc.exists()) {
           setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
@@ -239,27 +243,35 @@ export default function App() {
 
   const addToCart = (p) => {
     if (p.stock <= 0) return alert("Requested product payload is currently out of stock!");
-    const exist = cart.find(x => x.id === p.id);
+    
+    // Size selection mandatory block guard rules for footwear category items
+    if (p.category === "Shoes & Footwear" && !selectedSizes[p.id]) {
+      return alert("Kripya is jute ka size select karein tabhi item bag me add hoga!");
+    }
+    
+    const chosenSize = p.category === "Shoes & Footwear" ? selectedSizes[p.id] : null;
+    const exist = cart.find(x => x.id === p.id && x.selectedSize === chosenSize);
     let updatedCart = [];
+    
     if (exist) {
-      if (exist.qty >= p.stock) return alert("Inventory limit reached for this specific item!");
-      updatedCart = cart.map(x => x.id === p.id ? { ...exist, qty: exist.qty + 1 } : x);
+      if (exist.qty >= p.stock) return alert("Inventory limit reached for this specific item size!");
+      updatedCart = cart.map(x => (x.id === p.id && x.selectedSize === chosenSize) ? { ...exist, qty: exist.qty + 1 } : x);
     } else {
-      updatedCart = [...cart, { ...p, qty: 1 }];
+      updatedCart = [...cart, { ...p, qty: 1, selectedSize: chosenSize }];
     }
     syncCart(updatedCart);
   };
 
-  const updateCartQty = (id, delta) => {
-    const item = cart.find(x => x.id === id);
+  const updateCartQty = (id, delta, sizeVariant) => {
+    const item = cart.find(x => x.id === id && x.selectedSize === sizeVariant);
     if (!item) return;
     const nextQty = item.qty + delta;
     let updatedCart = [];
     if (nextQty <= 0) {
-      updatedCart = cart.filter(x => x.id !== id);
+      updatedCart = cart.filter(x => !(x.id === id && x.selectedSize === sizeVariant));
     } else {
       if (delta > 0 && nextQty > item.stock) return alert("Maximum inventory parameters exceeded!");
-      updatedCart = cart.map(x => x.id === id ? { ...item, qty: nextQty } : x);
+      updatedCart = cart.map(x => (x.id === id && x.selectedSize === sizeVariant) ? { ...item, qty: nextQty } : x);
     }
     syncCart(updatedCart);
   };
@@ -278,6 +290,11 @@ export default function App() {
     const el = e.target.elements;
     const imgArray = el.itemImg.value.split(",").map(url => url.trim());
 
+    // Extracting marked specific footwear sizing array sets safely from dynamic node checkboxes
+    const activeSizesArray = [];
+    const sizeCheckboxes = e.target.querySelectorAll('input[name="adminShoeSizes"]:checked');
+    sizeCheckboxes.forEach(cb => activeSizesArray.push(cb.value));
+
     try {
       await addDoc(collection(db, "products"), { 
         name: el.itemName.value, 
@@ -289,10 +306,11 @@ export default function App() {
         offerTag: el.itemOfferTag.value || "None",
         specifications: el.itemSpecs.value || "Premium quality guaranteed checked asset.",
         isBestSeller: el.bestSeller.checked,
-        isNewArrival: el.newArrival.checked
+        isNewArrival: el.newArrival.checked,
+        availableSizes: activeSizesArray
       });
       e.target.reset();
-      alert("Product batch deployed successfully!");
+      alert("Product batch with embedded variables deployed successfully!");
     } catch (error) {
       alert("Database engine write failure!");
     }
@@ -368,7 +386,6 @@ export default function App() {
     }
   });
 
-  // Professional Store Timing Guard Validation Handler
   const checkOperationalHours = () => {
     const currentHour = new Date().getHours();
     if (isAdmin) return true; 
@@ -423,7 +440,7 @@ export default function App() {
         phone: custInfo.phone,
         address: fullAddressString,
         userEmail: user ? user.email : "Anonymous",
-        items: cart.map(i => ({ name: i.name, qty: i.qty, total: getDiscountedPrice(i.price, i.discount) * i.qty })),
+        items: cart.map(i => ({ name: i.name, qty: i.qty, total: getDiscountedPrice(i.price, i.discount) * i.qty, size: i.selectedSize || null })),
         totalAmount: cartTotal,
         paymentMode: paymentType === "COD" ? "Cash on Delivery (COD)" : "Online UPI Payment",
         paymentStatus: paymentType === "UPI" ? "Awaiting Admin Verification ⏳" : "COD Pending Delivery",
@@ -454,7 +471,7 @@ export default function App() {
   };
 
   const sendWhatsAppNotification = () => {
-    const itemsMsg = cart.map(i => `${i.name} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
+    const itemsMsg = cart.map(i => `${i.name} ${i.selectedSize ? `(Size: ${i.selectedSize})` : ''} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
     const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : "UPI Intent Flow Complete";
     const msg = `New Order Confirmed - Daily Needs Hub\nOrder ID: ${currentOrderId}\nCustomer Name: ${custInfo.name}\nContact: ${custInfo.phone}\nAddress: ${fullAddressString}\nItems Summary: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
@@ -473,16 +490,17 @@ export default function App() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Upgraded Dynamic Emoji Allocation Handler
   const getCategoryEmoji = (cat) => {
     switch(cat) {
       case 'All': return '🛍️';
       case 'Dairy & Milk': return '🥛';
       case 'Cold drinks & Beverages': return '🥤';
+      case 'Ice-Creams & Frozen': return '🍦';
       case 'Snacks & Munchies': return '🍿';
       case 'Chocolates & Sweets': return '🍫';
-      case 'Personal care': return '🧼';
       case 'Home Daily Needs & Grocery': return '🏠';
+      case 'Shoes & Footwear': return '👟';
+      case 'Personal care': return '🧼';
       default: return '📦';
     }
   };
@@ -562,7 +580,7 @@ export default function App() {
       {!isAdmin && !isAdminUrl && activeTab === "shop" && (
         <div className="sticky top-[69px] z-30 px-4 py-2 bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-100 max-w-md mx-auto">
           <input 
-            type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks..." 
+            type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks, shoes..." 
             className="w-full p-3 bg-white rounded-2xl border-2 border-orange-100 text-xs focus:border-emerald-500 focus:outline-none transition-all text-black font-semibold shadow-inner"
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -654,6 +672,20 @@ export default function App() {
                             {offerTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
                           </select>
                         </div>
+                        
+                        {/* Interactive Sizing Checkboxes Matrix for Admin Footwear Add */}
+                        <div className="bg-gray-50 p-2.5 rounded-xl border space-y-1">
+                          <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block">Available Shoe Sizes (If Footwear Category):</label>
+                          <div className="flex flex-wrap gap-2 text-[11px] font-bold text-gray-700 pt-0.5">
+                            {["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"].map(sz => (
+                              <label key={sz} className="flex items-center gap-1 bg-white px-2 py-1 rounded border shadow-sm cursor-pointer">
+                                <input type="checkbox" value={sz} name="adminShoeSizes" className="rounded text-emerald-600" />
+                                {sz}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
                         <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
                         <textarea name="itemSpecs" placeholder="Product Details / Specifications" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" rows="2" />
                         
@@ -664,7 +696,7 @@ export default function App() {
                       </form>
                     )}
 
-                    {/* Quick Counters Inventory Manager Sheet (Admin Tab 3) */}
+                    {/* Quick Counters Inventory Manager Sheet with Editable Fields (Admin Tab 3) */}
                     {adminTab === "manage-items" && (
                       <div className="bg-white rounded-3xl space-y-4 text-black">
                         <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider border-b pb-2">📋 Stock Controller Grid Metadata</h3>
@@ -676,12 +708,33 @@ export default function App() {
                                 <div className="flex justify-between items-start">
                                   <span className="text-xs font-black text-gray-800 truncate max-w-[70%]">{p.name}</span>
                                   <button onClick={async () => { if(window.confirm("Delete asset item?")) await deleteDoc(doc(db, "products", p.id)); }} className="text-[10px] text-red-500 font-bold underline">Delete</button>
-                                </div >
+                                </div>
+                                
+                                {/* Upgraded Editable Fields Grid inside Admin Stock Sheet */}
+                                <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-xl border border-gray-100">
+                                  <div className="flex flex-col gap-0.5">
+                                    <label className="text-[8px] font-black text-gray-400 uppercase">Price (₹ MRP)</label>
+                                    <input 
+                                      type="number" 
+                                      defaultValue={p.price} 
+                                      className="border rounded p-1 text-xs font-bold w-full bg-gray-50"
+                                      onBlur={(e) => updateProductData(p.id, "price", e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="flex flex-col gap-0.5">
+                                    <label className="text-[8px] font-black text-gray-400 uppercase">Discount Rate %</label>
+                                    <input 
+                                      type="number" 
+                                      defaultValue={p.discount || 0} 
+                                      className="border rounded p-1 text-xs font-bold w-full bg-gray-50"
+                                      onBlur={(e) => updateProductData(p.id, "discount", e.target.value)}
+                                    />
+                                  </div>
+                                </div>
+
                                 <div className="flex justify-between items-center pt-1 border-t border-dashed">
-                                  <div className="flex items-center gap-1.5 text-[10px] text-gray-500 font-bold">
-                                    <span>MRP: ₹{p.price}</span>
-                                    <span>|</span>
-                                    <span>Disc: {p.discount || 0}%</span>
+                                  <div className="text-[9px] text-gray-400 font-bold">
+                                    {p.availableSizes && p.availableSizes.length > 0 ? `Sizes: ${p.availableSizes.join(', ')}` : 'Standard Unit'}
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <button onClick={() => updateProductData(p.id, "stock", Math.max(0, p.stock - 1))} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">-</button>
@@ -696,7 +749,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Orders Pipeline Engine Room (Admin Tab 4 - Restored Delete Actions & Sorted Logic View) */}
+                    {/* Orders Pipeline Engine Room (Admin Tab 4) */}
                     {adminTab === "orders" && (
                       <div className="space-y-3 text-black">
                         <div className="bg-blue-50 p-3 rounded-2xl border border-blue-200">
@@ -720,12 +773,17 @@ export default function App() {
                               </div>
                               {ord.utr && <p className="bg-gray-50 p-1 text-[10px] font-mono text-gray-500">Ref ID: {ord.utr}</p>}
                               
+                              <div className="bg-slate-50 p-2 rounded-xl text-[10px] space-y-1 font-semibold text-gray-700">
+                                {ord.items?.map((it, idx) => (
+                                  <p key={idx}>• {it.name} {it.size ? `(Size: ${it.size})` : ''} x{it.qty}</p>
+                                ))}
+                              </div>
+
                               <div className="flex justify-between items-center pt-2 border-t gap-2">
                                 <a href={`tel:${ord.phone || '8637589429'}`} className="bg-emerald-50 text-emerald-700 px-3 py-1.5 border border-emerald-200 rounded-xl font-black text-[10px] flex items-center gap-1 shadow-sm uppercase tracking-wide">
                                   📞 Call Buyer
                                 </a>
 
-                                {/* Restored permanent record delete capabilities block */}
                                 <button 
                                   onClick={async () => { if(window.confirm("Permanently wipe this order statement history?")) await deleteDoc(doc(db, "orders", ord.id)); }}
                                   className="text-[10px] text-red-500 border border-red-200 px-2 py-1.5 rounded-xl font-bold bg-red-50 hover:bg-red-100 transition-all"
@@ -847,9 +905,9 @@ export default function App() {
               </div>
             )}
 
-            {/* UPGRADED PROFESSIONAL CUSTOMER ACCOUNT MODULE */}
+            {/* UPGRADED STRUCTURED PROFILE AND SHIPPING ACCOUNT MODULE */}
             {activeTab === "account" && (
-              <div className="px-4 space-y-6 text-black">
+              <div className="px-4 space-y-6 text-black pb-12">
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-5 rounded-3xl text-white shadow-md">
                   <h2 className="text-xl font-black">👤 Account Hub</h2>
                   <p className="text-xs opacity-80">Profile configurations & saved logistics</p>
@@ -865,7 +923,7 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <h4 className="font-extrabold text-sm text-gray-800">Welcome, Guest Customer</h4>
+                        <h4 className="font-extrabold text-sm text-gray-800">Welcome, Guest Grahak</h4>
                         <p className="text-[10px] text-gray-400 font-bold">Connect profile for cloud persistent cart sync</p>
                       </>
                     )}
@@ -877,15 +935,15 @@ export default function App() {
                   )}
                 </div>
 
-                {/* SECTION 1: My Profile (Name, Gender, Mobile Number) */}
+                {/* CARD SECTION 1: My Profile */}
                 <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
                   <div className="flex justify-between items-center border-b pb-2">
-                    <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">👤 My Profile Panel</h3>
+                    <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">👤 My Profile</h3>
                     <button onClick={saveProfileDataToCloud} className="text-[10px] bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg border font-black uppercase">Update Profile</button>
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-[9px] font-black text-gray-400 uppercase">Customer Full Name *</label>
+                      <label className="text-[9px] font-black text-gray-400 uppercase">Grahak Full Name</label>
                       <input 
                         type="text" placeholder="Enter Full Name" 
                         value={custInfo.name || ''}
@@ -893,44 +951,42 @@ export default function App() {
                         onChange={(e) => setCustInfo({...custInfo, name: e.target.value})}
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[9px] font-black text-gray-400 uppercase">Gender Selector</label>
-                        <select 
-                          value={custInfo.gender || 'Male'}
-                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold mt-0.5 text-black"
-                          onChange={(e) => setCustInfo({...custInfo, gender: e.target.value})}
-                        >
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[9px] font-black text-gray-400 uppercase">Mobile Contact Number *</label>
-                        <input 
-                          type="tel" placeholder="10-Digit Mobile" 
-                          value={custInfo.phone || ''}
-                          className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
-                          onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})}
-                        />
-                      </div>
+                    <div>
+                      <label className="text-[9px] font-black text-gray-400 uppercase">Gender</label>
+                      <select 
+                        value={custInfo.gender || 'Male'}
+                        className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold mt-0.5 text-black"
+                        onChange={(e) => setCustInfo({...custInfo, gender: e.target.value})}
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </div>
                   </div>
                 </div>
 
-                {/* SECTION 2: Saved Shipping Address (Landmark, Vill, City, Pin) */}
+                {/* CARD SECTION 2: Saved Address */}
                 <div className="bg-white p-5 rounded-3xl border shadow-sm space-y-3">
                   <div className="flex justify-between items-center border-b pb-2">
-                    <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">📍 Saved Delivery Address</h3>
-                    <button onClick={saveAddressToLocal} className="text-[10px] bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg border font-black uppercase">Save Address</button>
+                    <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">📍 Saved Address Details</h3>
+                    <button onClick={saveAddressToLocal} className="text-[10px] bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-lg border font-black uppercase">Save Permanent</button>
                   </div>
                   <div className="space-y-3">
+                    <div>
+                      <label className="text-[9px] font-black text-gray-400 uppercase">Grahak Mobile Phone Number *</label>
+                      <input 
+                        type="tel" placeholder="10-Digit Mobile" 
+                        value={custInfo.phone || ''}
+                        className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
+                        onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})}
+                      />
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[9px] font-black text-gray-400 uppercase">Village / Locality Name *</label>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">Village Name *</label>
                         <input 
-                          type="text" placeholder="Enter Village name" 
+                          type="text" placeholder="Village" 
                           value={custInfo.vill || ''}
                           className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
                           onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})}
@@ -939,7 +995,7 @@ export default function App() {
                       <div>
                         <label className="text-[9px] font-black text-gray-400 uppercase">City / Town Name *</label>
                         <input 
-                          type="text" placeholder="Enter City/Town" 
+                          type="text" placeholder="City/Town" 
                           value={custInfo.city || ''}
                           className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
                           onChange={(e) => setCustInfo({...custInfo, city: e.target.value})}
@@ -948,18 +1004,18 @@ export default function App() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[9px] font-black text-gray-400 uppercase">Famous Landmark</label>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">Famous Landmark / Building</label>
                         <input 
-                          type="text" placeholder="Near school, temple etc." 
+                          type="text" placeholder="Near school, shop etc." 
                           value={custInfo.landmark || ''}
                           className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
                           onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})}
                         />
                       </div>
                       <div>
-                        <label className="text-[9px] font-black text-gray-400 uppercase">Area PIN Code *</label>
+                        <label className="text-[9px] font-black text-gray-400 uppercase">6-Digit Area PIN Code *</label>
                         <input 
-                          type="number" placeholder="6-Digit PIN Code" 
+                          type="number" placeholder="PIN Code" 
                           value={custInfo.pin || ''}
                           className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold mt-0.5 text-black"
                           onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})}
@@ -969,49 +1025,62 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* SECTION 3: My Orders (Order History & Step Track Pipelines) */}
+                {/* CARD SECTION 3: My Orders (History & Step Track Pipelines Integration) */}
                 <div className="space-y-3">
                   <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider flex items-center gap-1.5">📦 My Orders History & Live Tracking</h3>
-                  {orders.filter(o => user ? o.userEmail === user.email : true).length === 0 ? (
-                    <div className="p-6 text-center bg-white/40 border border-dashed rounded-2xl text-xs font-bold text-gray-400">
-                      No verified active purchase history record discovered.
-                    </div>
-                  ) : (
-                    orders.filter(o => user ? o.userEmail === user.email : true).map(o => (
-                      <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-3 border-l-4 border-l-orange-500 text-black">
-                        <div className="flex justify-between text-xs font-black">
-                          <span className="text-gray-400">ID: ...{o.id.slice(-6)}</span>
-                          <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] shadow-sm font-black border border-emerald-100">{o.status}</span>
-                        </div>
-                        
-                        {/* Interactive dynamic progress pipeline slider blocks */}
-                        <div className="space-y-1">
-                          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                            <div className="bg-gradient-to-r from-orange-500 to-emerald-500 h-full transition-all duration-500" style={{ width: `${getOrderStatusProgress(o.status)}%` }}></div>
-                          </div>
-                          <div className="flex justify-between text-[8px] font-bold text-gray-400 uppercase tracking-tight">
-                            <span className={o.status.includes("Pending") ? "text-orange-600 font-extrabold" : ""}>Pending</span>
-                            <span className={o.status.includes("Packed") ? "text-orange-600 font-extrabold" : ""}>Packed</span>
-                            <span className={o.status.includes("Delivery") ? "text-orange-600 font-extrabold" : ""}>Out for Delivery</span>
-                            <span className={o.status.includes("Delivered") ? "text-emerald-600 font-extrabold" : ""}>Delivered</span>
-                          </div>
-                        </div>
-
-                        <div className="text-xs text-gray-600 font-bold border-b pb-1">
-                          {o.items.map((it, idx) => <span key={idx}>{it.name} (x{it.qty}), </span>)}
-                        </div>
-                        <div className="flex justify-between items-center text-[10px] font-bold text-gray-500">
-                          <p className="text-emerald-700">Payment: {o.paymentMode || "Online UPI payment"}</p>
-                          {o.paymentStatus && <p className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[9px]">{o.paymentStatus}</p>}
-                        </div>
-                        <div className="flex justify-between items-center text-xs font-black pt-1 border-t border-dashed">
-                          <span className="text-gray-400">Date: {o.createdAt?.split(',')[0]}</span>
-                          <span className="text-orange-600 text-sm">₹{o.totalAmount}</span>
-                        </div>
+                  <div className="space-y-3 max-h-[45vh] overflow-y-auto no-scrollbar pr-0.5">
+                    {orders.filter(o => custInfo.phone ? o.phone === custInfo.phone : (user ? o.userEmail === user.email : true)).length === 0 ? (
+                      <div className="p-6 text-center bg-white/40 border border-dashed rounded-2xl text-xs font-bold text-gray-400">
+                        No active purchase history record discovered for this configuration number.
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      orders.filter(o => custInfo.phone ? o.phone === custInfo.phone : (user ? o.userEmail === user.email : true)).map(o => (
+                        <div key={o.id} className="bg-white p-4 rounded-2xl border shadow-sm space-y-3 border-l-4 border-l-orange-500 text-black text-xs">
+                          <div className="flex justify-between font-black">
+                            <span className="text-gray-400 font-mono">ID: #{o.id.substring(0, 7).toUpperCase()}</span>
+                            <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[10px] font-black border border-emerald-100">{o.status}</span>
+                          </div>
+                          
+                          {/* Live Progress pipeline indicators */}
+                          <div className="space-y-1">
+                            <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                              <div className="bg-gradient-to-r from-orange-500 to-emerald-500 h-full transition-all duration-500" style={{ width: `${getOrderStatusProgress(o.status)}%` }}></div>
+                            </div>
+                            <div className="flex justify-between text-[8px] font-bold text-gray-400 uppercase tracking-tight">
+                              <span>Ordered</span>
+                              <span>Packed</span>
+                              <span>Shipping</span>
+                              <span>Delivered</span>
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] text-gray-600 font-bold border-b pb-1 space-y-0.5">
+                            {o.items?.map((it, idx) => (
+                              <p key={idx}>• {it.name} {it.size ? `(Size: ${it.size})` : ''} <span className="text-gray-400 font-mono">(x{it.qty})</span></p>
+                            ))}
+                          </div>
+                          <div className="flex justify-between items-center text-[10px] font-bold text-gray-500">
+                            <p className="text-emerald-700">Payment: {o.paymentMode || "Online UPI payment"}</p>
+                            {o.paymentStatus && <p className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[9px]">{o.paymentStatus}</p>}
+                          </div>
+                          <div className="flex justify-between items-center font-black pt-1 border-t border-dashed">
+                            <span className="text-gray-400 text-[10px]">Date: {o.createdAt?.split(',')[0]}</span>
+                            <span className="text-orange-600 text-sm">Total: ₹{o.totalAmount}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
+
+                {/* Legal Action Matrix Trigger Links */}
+                <div className="grid grid-cols-4 gap-1 text-center text-[9px] font-black tracking-wider text-slate-400 uppercase pt-2">
+                  <span onClick={() => handleOpenLegal('about')} className="cursor-pointer hover:underline">About</span>
+                  <span onClick={() => handleOpenLegal('privacy')} className="cursor-pointer hover:underline">Privacy</span>
+                  <span onClick={() => handleOpenLegal('refund')} className="cursor-pointer hover:underline">Refund</span>
+                  <span onClick={() => handleOpenLegal('terms')} className="cursor-pointer hover:underline">Terms</span>
+                </div>
+
               </div>
             )}
 
@@ -1075,6 +1144,26 @@ export default function App() {
                            <div className="px-1 text-center flex-1 flex flex-col justify-between">
                              <div>
                                <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="font-extrabold text-gray-800 text-xs truncate cursor-pointer underline">{p.name}</h3>
+                               
+                               {/* Dynamic Sizing Dropdown Drop Matrix Selector for Customer Footwear Category */}
+                               {p.category === "Shoes & Footwear" && (
+                                 <div className="mt-1.5 mb-1 text-left">
+                                   <label className="text-[8px] font-black text-slate-400 uppercase block tracking-tight">Select Size *</label>
+                                   <select
+                                     value={selectedSizes[p.id] || ""}
+                                     onChange={(e) => setSelectedSizes({ ...selectedSizes, [p.id]: e.target.value })}
+                                     className="w-full p-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-black focus:outline-none"
+                                   >
+                                     <option value="" disabled>Choose</option>
+                                     {p.availableSizes && p.availableSizes.length > 0 ? (
+                                       p.availableSizes.map(sz => <option key={sz} value={sz}>{sz}</option>)
+                                     ) : (
+                                       ["UK 7", "UK 8"].map(dSz => <option key={dSz} value={dSz}>{dSz} (Default)</option>)
+                                     )}
+                                   </select>
+                                 </div>
+                               )}
+
                                <div className="flex items-center justify-center gap-2 mt-0.5">
                                  <span className="text-base font-black text-orange-600">₹{finalPrice}</span>
                                  {hasDiscount && <span className="text-[10px] text-gray-400 line-through font-bold">₹{p.price}</span>}
@@ -1085,10 +1174,10 @@ export default function App() {
                                  <button disabled className="w-full py-2 bg-gray-200 text-gray-400 rounded-xl text-[10px] font-bold cursor-not-allowed">OUT OF STOCK</button>
                                ) : (
                                  <>
-                                   <button onClick={() => { addToCart(p); alert("Added to cart drawer!"); }} className="w-full py-1.5 bg-gray-100 text-gray-700 font-extrabold rounded-xl text-[10px] border border-gray-200 shadow-sm active:scale-95 transition-all">
+                                   <button onClick={() => { addToCart(p); }} className="w-full py-1.5 bg-gray-100 text-gray-700 font-extrabold rounded-xl text-[10px] border border-gray-200 shadow-sm active:scale-95 transition-all">
                                      ADD TO CART
                                    </button>
-                                   <button onClick={() => { addToCart(p); setIsCartOpen(true); }} className="w-full py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black rounded-xl text-[10px] shadow-sm active:scale-95 transition-all">
+                                   <button onClick={() => { addToCart(p); if(p.category !== "Shoes & Footwear" || selectedSizes[p.id]) setIsCartOpen(true); }} className="w-full py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black rounded-xl text-[10px] shadow-sm active:scale-95 transition-all">
                                      ORDER NOW
                                    </button>
                                  </>
@@ -1144,7 +1233,7 @@ export default function App() {
                     <a href="https://facebook.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">
                       <span>🌐</span> Facebook Official
                     </a>
-                    <a href="https://indigo.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-100 shadow-sm">
+                    <a href="https://instagram.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-100 shadow-sm">
                       <span>📸</span> Instagram Connect
                     </a>
                   </div>
@@ -1163,16 +1252,16 @@ export default function App() {
 
             {/* Bottom Nav Bar Navigation Dock */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-40 flex justify-around items-center rounded-t-[2rem] shadow-xl text-black max-w-md mx-auto">
-              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "shop" ? "text-orange-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className="flex flex-col items-center p-2 rounded-xl text-gray-400 font-bold">
                 <span className="text-lg">🏠</span><span className="text-[10px]">Home</span>
               </button>
-              <button onClick={() => setActiveTab("categories")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "categories" ? "text-emerald-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => setActiveTab("categories")} className="flex flex-col items-center p-2 rounded-xl text-gray-400 font-bold">
                 <span className="text-lg">🗂️</span><span className="text-[10px]">Category</span>
               </button>
-              <button onClick={() => setActiveTab("offers")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "offers" ? "text-red-500 font-black scale-105" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => setActiveTab("offers")} className="flex flex-col items-center p-2 rounded-xl text-gray-400 font-bold">
                 <span className="text-lg">🎁</span><span className="text-[10px]">Offers</span>
               </button>
-              <button onClick={() => setActiveTab("account")} className={`flex flex-col items-center p-2 rounded-xl ${activeTab === "account" ? "text-blue-600 font-black scale-105" : "text-gray-400 font-bold"}`}>
+              <button onClick={() => setActiveTab("account")} className="flex flex-col items-center p-2 rounded-xl text-gray-400 font-bold">
                 <span className="text-lg">👤</span><span className="text-[10px]">Account</span>
               </button>
               <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 bg-gradient-to-r from-orange-500 to-emerald-500 text-white rounded-2xl px-2.5 py-1 shadow-md">
@@ -1237,7 +1326,7 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Advanced Cart Quantity Controls */}
+              {/* Advanced Cart Quantity Controls tracking unique items and variants */}
               <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-1">
                 {cart.length === 0 ? (
                   <p className="text-xs text-center text-gray-400 font-bold py-10">Your cart drawer is completely empty.</p>
@@ -1246,12 +1335,13 @@ export default function App() {
                     <div key={index} className="flex justify-between items-center py-2.5 border-b text-xs">
                       <div className="min-w-0 flex-1">
                         <p className="font-extrabold text-gray-800 truncate">{item.name}</p>
+                        {item.selectedSize && <p className="text-[10px] text-indigo-600 font-bold">Selected Variant Size: {item.selectedSize}</p>}
                         <p className="text-[10px] text-orange-500 font-bold">₹{getDiscountedPrice(item.price, item.discount)} / unit</p>
                       </div>
                       <div className="flex items-center gap-2.5 ml-4">
-                        <button onClick={() => updateCartQty(item.id, -1)} className="w-6 h-6 bg-gray-100 border text-gray-800 rounded-lg flex items-center justify-center font-black text-sm active:bg-gray-200">-</button>
+                        <button onClick={() => updateCartQty(item.id, -1, item.selectedSize)} className="w-6 h-6 bg-gray-100 border text-gray-800 rounded-lg flex items-center justify-center font-black text-sm active:bg-gray-200">-</button>
                         <span className="font-black text-sm w-4 text-center">{item.qty}</span>
-                        <button onClick={() => updateCartQty(item.id, 1)} className="w-6 h-6 bg-gray-100 border text-gray-800 rounded-lg flex items-center justify-center font-black text-sm active:bg-gray-200">+</button>
+                        <button onClick={() => updateCartQty(item.id, 1, item.selectedSize)} className="w-6 h-6 bg-gray-100 border text-gray-800 rounded-lg flex items-center justify-center font-black text-sm active:bg-gray-200">+</button>
                       </div>
                     </div>
                   ))
@@ -1299,7 +1389,7 @@ export default function App() {
               </p>
             </div>
 
-            <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); alert("Added to cart database!"); }} className="w-full bg-orange-600 text-white font-black py-3 rounded-xl text-xs uppercase shadow">
+            <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); }} className="w-full bg-orange-600 text-white font-black py-3 rounded-xl text-xs uppercase shadow">
               Add This Item to Bag
             </button>
           </div>
@@ -1420,7 +1510,7 @@ export default function App() {
             <div className="space-y-1.5 border-t pt-3 max-h-[15vh] overflow-y-auto pr-1">
               {cart.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center text-[11px] text-gray-700">
-                  <span className="font-bold">{item.name} <b className="text-gray-400 font-medium">x{item.qty}</b></span>
+                  <span className="font-bold">{item.name} {item.selectedSize ? `(Size: ${item.selectedSize})` : ''} <b className="text-gray-400 font-medium">x{item.qty}</b></span>
                   <span className="font-extrabold text-gray-900">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</span>
                 </div>
               ))}

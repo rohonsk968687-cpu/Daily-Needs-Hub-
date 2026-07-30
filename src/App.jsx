@@ -20,7 +20,7 @@ const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Upgraded New Premium Categories List Layout with Footwear Integration
+// Upgraded New Premium Categories List Layout
 const categories = [
   "All", 
   "Dairy & Milk", 
@@ -29,9 +29,69 @@ const categories = [
   "Snacks & Munchies", 
   "Chocolates & Sweets", 
   "Home Daily Needs & Grocery",
+  "Fashion & Clothing",
   "Shoes & Footwear",
   "Personal care"
 ];
+
+// Complete Sub-Category Mappings with Visual Icons & Labels
+const subCategoriesMap = {
+  "Dairy & Milk": [
+    { name: "Fresh Milk", icon: "🥛" },
+    { name: "Curd & Dahi", icon: "🥣" },
+    { name: "Lassi & Butter Milk", icon: "🥤" },
+    { name: "Paneer & Cheese", icon: "🧀" },
+    { name: "Butter & Ghee", icon: "🧈" }
+  ],
+  "Cold drinks & Beverages": [
+    { name: "Soft Drinks", icon: "🥤" },
+    { name: "Energy Drinks", icon: "⚡" },
+    { name: "Juices & Mango Drinks", icon: "🧃" },
+    { name: "Tea & Coffee", icon: "☕" }
+  ],
+  "Ice-Creams & Frozen": [
+    { name: "Cone & Cups", icon: "🍦" },
+    { name: "Family Packs", icon: "🍨" },
+    { name: "Chocobar & Candy", icon: "🍭" }
+  ],
+  "Snacks & Munchies": [
+    { name: "Chips & Kurkure", icon: "🍿" },
+    { name: "Biscuits & Cookies", icon: "🍪" },
+    { name: "Namkeen & Chanachur", icon: "🥨" },
+    { name: "Noodles & Pasta", icon: "🍜" }
+  ],
+  "Chocolates & Sweets": [
+    { name: "Cadbury & Premium", icon: "🍫" },
+    { name: "Candies & Toffees", icon: "🍬" },
+    { name: "Traditional Sweets", icon: "🍯" }
+  ],
+  "Home Daily Needs & Grocery": [
+    { name: "Atta, Rice & Dal", icon: "🌾" },
+    { name: "Oil & Spices (Masala)", icon: "🧂" },
+    { name: "Sauce & Ketchup", icon: "🥫" },
+    { name: "Cleaning & Detergent", icon: "🧹" }
+  ],
+  "Fashion & Clothing": [
+    { name: "T-Shirts", icon: "👕" },
+    { name: "Shirts", icon: "👔" },
+    { name: "Jeans & Trousers", icon: "👖" },
+    { name: "Sarees & Ethnic Wear", icon: "🥻" },
+    { name: "Ladies Tops & Kurtis", icon: "👗" },
+    { name: "Kids Wear", icon: "👶" }
+  ],
+  "Shoes & Footwear": [
+    { name: "Sports Shoes", icon: "👟" },
+    { name: "Casual Shoes", icon: "👞" },
+    { name: "Slippers & Flip-Flops", icon: "🩴" },
+    { name: "Sandals", icon: "👡" }
+  ],
+  "Personal care": [
+    { name: "Soap & Body Wash", icon: "🧼" },
+    { name: "Toothpaste & Brush", icon: "🪥" },
+    { name: "Hair Shampoo & Oil", icon: "🧴" },
+    { name: "Face Wash & Cream", icon: "✨" }
+  ]
+};
 
 const offerTags = ["None", "Today's Deal", "Buy 2 Get 1", "Combo Pack", "Flash Sale"];
 const BRAND_LOGO_URL = "/logo.png"; 
@@ -62,6 +122,7 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [activeSubCategory, setActiveSubCategory] = useState("All");
   const [selectedOfferFilter, setSelectedOfferFilter] = useState("All");
   const [showInvoice, setShowInvoice] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState("");
@@ -70,7 +131,7 @@ export default function App() {
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [flashTime, setFlashTime] = useState(3600); 
 
-  // Client-side transient footwear selection metadata hook mapping item variants
+  // Client-side transient variant selection hook
   const [selectedSizes, setSelectedSizes] = useState({});
 
   // Combined state management for Profile and Address parameters
@@ -103,7 +164,7 @@ export default function App() {
     }
   }, []);
 
-  // Load cloud data structure metrics for profiles and carts
+  // Load cloud data structure metrics for profiles and carts (Persistent Address Auto-Sync)
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
@@ -112,7 +173,7 @@ export default function App() {
         if (cartDoc.exists()) {
           setCart(cartDoc.data().items || []);
         }
-        // Load Profile & Location Data Meta Node
+        // Load Profile & Location Data Meta Node from Firestore
         const profileDoc = await getDoc(doc(db, "profiles", user.uid));
         if (profileDoc.exists()) {
           setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
@@ -141,9 +202,16 @@ export default function App() {
   };
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
         setUser(currentUser);
+        // Automatic address recovery upon repeat login
+        const profileDoc = await getDoc(doc(db, "profiles", currentUser.uid));
+        if (profileDoc.exists()) {
+          setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
+        } else if (currentUser.displayName) {
+          setCustInfo(prev => ({ ...prev, name: currentUser.displayName }));
+        }
       } else {
         setUser(null);
         if (!currentUser) {
@@ -221,7 +289,7 @@ export default function App() {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
-    alert("Profile parameters updated and saved successfully!");
+    alert("Profile parameters updated and saved permanently!");
   };
 
   const saveAddressToLocal = async () => {
@@ -244,12 +312,12 @@ export default function App() {
   const addToCart = (p) => {
     if (p.stock <= 0) return alert("Requested product payload is currently out of stock!");
     
-    // Size selection mandatory block guard rules for footwear category items
-    if (p.category === "Shoes & Footwear" && !selectedSizes[p.id]) {
-      return alert("Kripya is jute ka size select karein tabhi item bag me add hoga!");
+    // Mandatory size selection rules for footwear or apparel items
+    if ((p.category === "Shoes & Footwear" || p.category === "Fashion & Clothing") && !selectedSizes[p.id] && p.availableSizes && p.availableSizes.length > 0) {
+      return alert("Kripya is item ka size select karein tabhi item bag me add hoga!");
     }
     
-    const chosenSize = p.category === "Shoes & Footwear" ? selectedSizes[p.id] : null;
+    const chosenSize = selectedSizes[p.id] || null;
     const exist = cart.find(x => x.id === p.id && x.selectedSize === chosenSize);
     let updatedCart = [];
     
@@ -290,9 +358,8 @@ export default function App() {
     const el = e.target.elements;
     const imgArray = el.itemImg.value.split(",").map(url => url.trim());
 
-    // Extracting marked specific footwear sizing array sets safely from dynamic node checkboxes
     const activeSizesArray = [];
-    const sizeCheckboxes = e.target.querySelectorAll('input[name="adminShoeSizes"]:checked');
+    const sizeCheckboxes = e.target.querySelectorAll('input[name="adminSizes"]:checked');
     sizeCheckboxes.forEach(cb => activeSizesArray.push(cb.value));
 
     try {
@@ -303,6 +370,7 @@ export default function App() {
         discount: Number(el.itemDiscount.value) || 0, 
         images: imgArray.length > 0 && imgArray[0] !== "" ? imgArray : ["📦"], 
         category: el.itemCategory.value,
+        subCategory: el.itemSubCategory.value || "General",
         offerTag: el.itemOfferTag.value || "None",
         specifications: el.itemSpecs.value || "Premium quality guaranteed checked asset.",
         isBestSeller: el.bestSeller.checked,
@@ -310,7 +378,7 @@ export default function App() {
         availableSizes: activeSizesArray
       });
       e.target.reset();
-      alert("Product batch with embedded variables deployed successfully!");
+      alert("Product batch deployed successfully!");
     } catch (error) {
       alert("Database engine write failure!");
     }
@@ -382,7 +450,8 @@ export default function App() {
       return matchesSearch && isOfferItem && matchesOfferFilter;
     } else {
       const matchesCategory = activeCategory === "All" || p.category === activeCategory;
-      return matchesSearch && matchesCategory;
+      const matchesSubCategory = activeSubCategory === "All" || p.subCategory === activeSubCategory;
+      return matchesSearch && matchesCategory && matchesSubCategory;
     }
   });
 
@@ -499,6 +568,7 @@ export default function App() {
       case 'Snacks & Munchies': return '🍿';
       case 'Chocolates & Sweets': return '🍫';
       case 'Home Daily Needs & Grocery': return '🏠';
+      case 'Fashion & Clothing': return '👔';
       case 'Shoes & Footwear': return '👟';
       case 'Personal care': return '🧼';
       default: return '📦';
@@ -511,13 +581,13 @@ export default function App() {
 
     if (type === 'about') {
       title = "About Our Store 🛒";
-      content = `Daily Needs Hub (DNH) is your trusted online neighborhood grocery destination. Established with a mission to bring fresh dairy, farm-fresh vegetables, crisp snacks, and premium beverages straight to your doorstep in Bolpur and Nanoor regions.\n\nWe bridge the gap between quality food sources and your kitchen, ensuring lightning-fast delivery, highly competitive market-beating prices, and verified safe online experiences. Thank you for making us your daily shopping partner!`;
+      content = `Daily Needs Hub (DNH) is your trusted online neighborhood grocery & lifestyle destination. Established with a mission to bring fresh dairy, farm-fresh vegetables, crisp snacks, footwear, and fashion items straight to your doorstep in Bolpur and Nanoor regions.\n\nWe bridge the gap between quality food sources and your kitchen, ensuring lightning-fast delivery, highly competitive market-beating prices, and verified safe online experiences. Thank you for making us your daily shopping partner!`;
     } else if (type === 'privacy') {
       title = "Privacy Protection Policy 🛡️";
-      content = `At Daily Needs Hub, your privacy is our supreme priority:\n\n1. Data Collection: We only collect essential delivery details like your Name, Shipping Address, and Contact Number for order processing.\n2. Payment Safety: We utilize universal secure UPI links. We never store credit cards, bank accounts, or sensitive UPI PINs on our servers.\n3. Account Security: Google Authentication guarantees secure, authorized tracking. We never share or sell customer data with third-party networks. Your trust is fully safe with us.`;
+      content = `At Daily Needs Hub, your privacy is our supreme priority:\n\n1. Data Collection: We only collect essential delivery details like your Name, Shipping Address, and Contact Number for order processing.\n2. Payment Safety: We utilize universal secure UPI links. We never store credit cards, bank accounts, or sensitive UPI PINs on our servers.\n3. Account Security: Persistent profile sync guarantees auto-restored saved address details upon login.`;
     } else if (type === 'refund') {
       title = "Refund & Return Terms 🔄";
-      content = `We want you to shop with absolute confidence. Our easy refund criteria includes:\n\n1. Fresh Goods (Dairy, Vegetables): Eligible for immediate replacement or refund within 3 hours of delivery if found damaged or stale.\n2. Packed Items: Damaged packets or expired batches can be returned at the time of delivery itself.\n3. Refund Method: Approved refunds are credited instantly within 24 hours back to your original payment mode or UPI address.`;
+      content = `We want you to shop with absolute confidence. Our easy refund criteria includes:\n\n1. Fresh Goods (Dairy, Vegetables): Eligible for immediate replacement or refund within 3 hours of delivery if found damaged or stale.\n2. Fashion & Shoes: Size exchanges available within 24 hours of delivery.\n3. Refund Method: Approved refunds are credited instantly within 24 hours back to your original payment mode or UPI address.`;
     } else if (type === 'terms') {
       title = "Terms & Conditions 📜";
       content = `Welcome to Daily Needs Hub. By accepting our platform frameworks, you express consent to our regulatory standard guidelines:\n\n1. Pricing: All rates listed on the application are verified and calculated accurately.\n2. Service Area: Currently active across Bolpur, Nanoor, Papuri, and adjacent Birbhum regions.\n3. Order Placement: Orders are confirmed once details are logged on WhatsApp or processed through the cash checkout invoice window. Fraudulent activities or dummy checks will result in account restriction.`;
@@ -564,7 +634,9 @@ export default function App() {
                <button onClick={() => setIsNotifOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs relative text-black">
                  🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{notifications.length}</span>}
                </button>
-               <button onClick={() => setIsWishlistOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs">❤️</button>
+               <button onClick={() => setIsWishlistOpen(true)} className="p-2 bg-gray-100 rounded-full text-xs relative text-black">
+                 ❤️ {wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{wishlist.length}</span>}
+               </button>
              </>
            )}
            {!user && !isAdmin && (
@@ -576,11 +648,11 @@ export default function App() {
         </div>
       </header>
 
-      {/* Sticky Custom Search Bar on Top of layout */}
+      {/* Sticky Custom Search Bar on Top */}
       {!isAdmin && !isAdminUrl && activeTab === "shop" && (
         <div className="sticky top-[69px] z-30 px-4 py-2 bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-100 max-w-md mx-auto">
           <input 
-            type="text" placeholder="🔍 Search fresh milk, cold drinks, snacks, shoes..." 
+            type="text" placeholder="🔍 Search milk, snacks, shoes, t-shirts, saree..." 
             className="w-full p-3 bg-white rounded-2xl border-2 border-orange-100 text-xs focus:border-emerald-500 focus:outline-none transition-all text-black font-semibold shadow-inner"
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -660,11 +732,20 @@ export default function App() {
                       <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-black">
                         <h3 className="text-xs font-black text-orange-600 uppercase tracking-wider">📦 Inject New Stock Payload</h3>
                         <input name="itemName" placeholder="Item / Product Name Title *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50 text-xs font-black">
+                            {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <input name="itemSubCategory" placeholder="Sub Category Name (e.g. Soap, T-Shirts)" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" />
+                        </div>
+
                         <div className="grid grid-cols-3 gap-2">
                           <input name="itemPrice" type="number" placeholder="Price (₹) *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
                           <input name="itemDiscount" type="number" placeholder="Disc %" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" />
                           <input name="itemStock" type="number" placeholder="Stock Qty *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
                         </div>
+
                         <div className="flex justify-between items-center text-[10px] font-black p-2.5 bg-gray-50 rounded-xl border">
                           <label className="flex items-center gap-1"><input type="checkbox" name="bestSeller" /> ✨ BestSeller</label>
                           <label className="flex items-center gap-1"><input type="checkbox" name="newArrival" /> 🚀 New Arrival</label>
@@ -673,13 +754,13 @@ export default function App() {
                           </select>
                         </div>
                         
-                        {/* Interactive Sizing Checkboxes Matrix for Admin Footwear Add */}
+                        {/* Interactive Sizing Checkboxes Matrix for Admin Footwear & Apparel Add */}
                         <div className="bg-gray-50 p-2.5 rounded-xl border space-y-1">
-                          <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block">Available Shoe Sizes (If Footwear Category):</label>
-                          <div className="flex flex-wrap gap-2 text-[11px] font-bold text-gray-700 pt-0.5">
-                            {["UK 6", "UK 7", "UK 8", "UK 9", "UK 10"].map(sz => (
+                          <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block">Available Sizes (If Shoes or Apparel):</label>
+                          <div className="flex flex-wrap gap-2 text-[10px] font-bold text-gray-700 pt-0.5">
+                            {["UK 6", "UK 7", "UK 8", "UK 9", "UK 10", "S", "M", "L", "XL", "XXL", "Free Size"].map(sz => (
                               <label key={sz} className="flex items-center gap-1 bg-white px-2 py-1 rounded border shadow-sm cursor-pointer">
-                                <input type="checkbox" value={sz} name="adminShoeSizes" className="rounded text-emerald-600" />
+                                <input type="checkbox" value={sz} name="adminSizes" className="rounded text-emerald-600" />
                                 {sz}
                               </label>
                             ))}
@@ -689,9 +770,6 @@ export default function App() {
                         <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
                         <textarea name="itemSpecs" placeholder="Product Details / Specifications" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" rows="2" />
                         
-                        <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50 text-xs font-black">
-                          {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
                         <button type="submit" className="bg-orange-600 text-white p-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow">ADD PRODUCT TO LIVE NODES</button>
                       </form>
                     )}
@@ -706,7 +784,10 @@ export default function App() {
                             return (
                               <div key={p.id} className={`p-3 rounded-2xl flex flex-col gap-2 border transition-all ${isLow ? 'bg-red-50/40 border-red-200' : 'bg-gray-50/50'}`}>
                                 <div className="flex justify-between items-start">
-                                  <span className="text-xs font-black text-gray-800 truncate max-w-[70%]">{p.name}</span>
+                                  <div>
+                                    <span className="text-xs font-black text-gray-800 truncate block max-w-[200px]">{p.name}</span>
+                                    <span className="text-[9px] text-gray-400 font-bold">{p.category} → {p.subCategory || "General"}</span>
+                                  </div>
                                   <button onClick={async () => { if(window.confirm("Delete asset item?")) await deleteDoc(doc(db, "products", p.id)); }} className="text-[10px] text-red-500 font-bold underline">Delete</button>
                                 </div>
                                 
@@ -833,9 +914,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          /* =========================================
-             CUSTOMER APPLICATION LAYOUT INTERFACES
-             ========================================= */
+          /* CUSTOMER APPLICATION LAYOUT INTERFACES */
           <>
             {activeTab === "shop" && (
               <>
@@ -879,13 +958,13 @@ export default function App() {
             {activeTab === "categories" && (
               <div className="px-4 mb-4">
                 <div className="bg-gradient-to-r from-emerald-600 to-teal-500 p-5 rounded-3xl text-white mb-6 shadow-md">
-                  <h2 className="text-xl font-black">All Categories</h2>
+                  <h2 className="text-xl font-black">All Categories & Departments</h2>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {categories.map(c => (
-                    <button key={c} onClick={() => { setActiveCategory(c); setActiveTab("shop"); }} className={`p-6 rounded-2xl bg-white text-left shadow-md border-2 font-black flex flex-col justify-between h-28 ${activeCategory === c ? 'border-orange-500 text-orange-600' : 'border-gray-100 text-gray-700'}`}>
+                    <button key={c} onClick={() => { setActiveCategory(c); setActiveSubCategory("All"); setActiveTab("shop"); }} className={`p-5 rounded-2xl bg-white text-left shadow-md border-2 font-black flex flex-col justify-between min-h-[100px] ${activeCategory === c ? 'border-orange-500 text-orange-600' : 'border-gray-100 text-gray-700'}`}>
                       <span className="text-3xl">{getCategoryEmoji(c)}</span>
-                      <span className="text-sm">{c}</span>
+                      <span className="text-xs font-extrabold mt-1">{c}</span>
                     </button>
                   ))}
                 </div>
@@ -1087,12 +1166,12 @@ export default function App() {
             {/* Main grid selection rendering workflow */}
             {activeTab !== "categories" && activeTab !== "account" && (
               <>
-                {/* Horizontal sliders indicators directly embedded */}
+                {/* Horizontal Category Slider Bar */}
                 <div className="flex gap-2 overflow-x-auto px-4 py-2 bg-transparent max-w-md mx-auto no-scrollbar">
                   {categories.map(cat => (
                     <button 
                       key={cat} 
-                      onClick={() => setActiveCategory(cat)}
+                      onClick={() => { setActiveCategory(cat); setActiveSubCategory("All"); }}
                       className={`px-4 py-1.5 rounded-full text-xs font-black border transition-all duration-300 transform active:scale-95 whitespace-nowrap shadow-sm ${activeCategory === cat ? 'bg-orange-500 text-white border-orange-600' : 'bg-white text-gray-600 border-gray-100'}`}
                     >
                       {getCategoryEmoji(cat)} {cat}
@@ -1100,7 +1179,32 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* SKELETON LOADERS FOR PRODUCT GRID FLOW */}
+                {/* Interactive Sub-Category Visual Chips Bar */}
+                {activeCategory !== "All" && subCategoriesMap[activeCategory] && (
+                  <div className="px-4 py-2 bg-orange-50/60 border-y border-orange-100 max-w-md mx-auto mb-2">
+                    <p className="text-[9px] font-black text-orange-600 uppercase tracking-wider mb-1.5">Sub-Categories:</p>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                      <button
+                        onClick={() => setActiveSubCategory("All")}
+                        className={`px-3 py-1 rounded-xl text-[10px] font-bold border transition-all whitespace-nowrap ${activeSubCategory === "All" ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-gray-700 border-gray-200'}`}
+                      >
+                        🌟 All Items
+                      </button>
+                      {subCategoriesMap[activeCategory].map(sub => (
+                        <button
+                          key={sub.name}
+                          onClick={() => setActiveSubCategory(sub.name)}
+                          className={`px-3 py-1 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 whitespace-nowrap ${activeSubCategory === sub.name ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' : 'bg-white text-gray-700 border-gray-200'}`}
+                        >
+                          <span>{sub.icon}</span>
+                          <span>{sub.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* SKELETON LOADERS FOR PRODUCT GRID */}
                 {isProductsLoading ? (
                   <main className="p-4 grid grid-cols-2 gap-4">
                     {[1, 2, 3, 4].map(idx => (
@@ -1145,8 +1249,8 @@ export default function App() {
                              <div>
                                <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="font-extrabold text-gray-800 text-xs truncate cursor-pointer underline">{p.name}</h3>
                                
-                               {/* Dynamic Sizing Dropdown Drop Matrix Selector for Customer Footwear Category */}
-                               {p.category === "Shoes & Footwear" && (
+                               {/* Dynamic Sizing Selector for Footwear / Fashion Categories */}
+                               {(p.availableSizes && p.availableSizes.length > 0) && (
                                  <div className="mt-1.5 mb-1 text-left">
                                    <label className="text-[8px] font-black text-slate-400 uppercase block tracking-tight">Select Size *</label>
                                    <select
@@ -1155,11 +1259,7 @@ export default function App() {
                                      className="w-full p-1 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-black focus:outline-none"
                                    >
                                      <option value="" disabled>Choose</option>
-                                     {p.availableSizes && p.availableSizes.length > 0 ? (
-                                       p.availableSizes.map(sz => <option key={sz} value={sz}>{sz}</option>)
-                                     ) : (
-                                       ["UK 7", "UK 8"].map(dSz => <option key={dSz} value={dSz}>{dSz} (Default)</option>)
-                                     )}
+                                     {p.availableSizes.map(sz => <option key={sz} value={sz}>{sz}</option>)}
                                    </select>
                                  </div>
                                )}
@@ -1177,7 +1277,7 @@ export default function App() {
                                    <button onClick={() => { addToCart(p); }} className="w-full py-1.5 bg-gray-100 text-gray-700 font-extrabold rounded-xl text-[10px] border border-gray-200 shadow-sm active:scale-95 transition-all">
                                      ADD TO CART
                                    </button>
-                                   <button onClick={() => { addToCart(p); if(p.category !== "Shoes & Footwear" || selectedSizes[p.id]) setIsCartOpen(true); }} className="w-full py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black rounded-xl text-[10px] shadow-sm active:scale-95 transition-all">
+                                   <button onClick={() => { addToCart(p); if(!p.availableSizes || p.availableSizes.length === 0 || selectedSizes[p.id]) setIsCartOpen(true); }} className="w-full py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white font-black rounded-xl text-[10px] shadow-sm active:scale-95 transition-all">
                                      ORDER NOW
                                    </button>
                                  </>
@@ -1250,9 +1350,9 @@ export default function App() {
               </footer>
             )}
 
-            {/* Bottom Nav Bar Navigation Dock */}
+            {/* Bottom Nav Bar */}
             <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-orange-100 p-2 z-40 flex justify-around items-center rounded-t-[2rem] shadow-xl text-black max-w-md mx-auto">
-              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); }} className="flex flex-col items-center p-2 rounded-xl text-gray-400 font-bold">
+              <button onClick={() => { setActiveTab("shop"); setActiveCategory("All"); setActiveSubCategory("All"); }} className="flex flex-col items-center p-2 rounded-xl text-gray-400 font-bold">
                 <span className="text-lg">🏠</span><span className="text-[10px]">Home</span>
               </button>
               <button onClick={() => setActiveTab("categories")} className="flex flex-col items-center p-2 rounded-xl text-gray-400 font-bold">
@@ -1326,7 +1426,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Advanced Cart Quantity Controls tracking unique items and variants */}
               <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-1">
                 {cart.length === 0 ? (
                   <p className="text-xs text-center text-gray-400 font-bold py-10">Your cart drawer is completely empty.</p>
@@ -1359,7 +1458,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Product Deep View Slideshow & Details Sheet */}
+      {/* Product Details Sheet */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 text-black overflow-y-auto max-h-[90vh]">
@@ -1385,7 +1484,7 @@ export default function App() {
             <div className="space-y-1">
               <span className="text-[10px] font-black uppercase text-gray-400">Product Specifications</span>
               <p className="text-xs bg-gray-50 p-3 rounded-xl border border-gray-100 font-medium text-gray-700 leading-relaxed whitespace-pre-line">
-                {selectedProduct.specifications || "Premium high quality checked grocery asset."}
+                {selectedProduct.specifications || "Premium high quality checked asset."}
               </p>
             </div>
 
@@ -1396,32 +1495,51 @@ export default function App() {
         </div>
       )}
 
-      {/* Wishlist Favorites Drawer Panel */}
+      {/* UPGRADED WISHLIST DRAWER (With Images & Price Tags) */}
       {isWishlistOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-5 max-w-sm w-full max-h-[70vh] overflow-y-auto text-black space-y-4">
+          <div className="bg-white rounded-3xl p-5 max-w-sm w-full max-h-[75vh] overflow-y-auto text-black space-y-4 shadow-2xl">
             <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="font-black text-sm">❤️ My Wishlist Favorites ({wishlist.length})</h3>
-              <button onClick={() => setIsWishlistOpen(false)} className="text-xs font-bold text-gray-400">X</button>
+              <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">❤️ My Wishlist Favorites ({wishlist.length})</h3>
+              <button onClick={() => setIsWishlistOpen(false)} className="text-xs font-bold text-gray-400 border px-2 py-0.5 rounded-lg">X</button>
             </div>
             {wishlist.length === 0 ? (
-              <p className="text-xs font-bold text-center text-gray-400 py-10">No items bookmarked inside your favorites list parameters.</p>
+              <p className="text-xs font-bold text-center text-gray-400 py-10">No items bookmarked inside your wishlist.</p>
             ) : (
-              wishlist.map(w => (
-                <div key={w.id} className="flex justify-between items-center text-xs p-2 bg-gray-50 rounded-xl border">
-                  <span className="font-bold truncate max-w-[150px]">{w.name}</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => addToCart(w)} className="bg-orange-500 text-white p-1 px-2 rounded font-bold text-[10px]">Move to Bag</button>
-                    <button onClick={() => toggleWishlist(w)} className="text-red-500 font-bold">🗑</button>
-                  </div>
-                </div>
-              ))
+              <div className="space-y-3">
+                {wishlist.map(w => {
+                  const pPrice = getDiscountedPrice(w.price, w.discount);
+                  const pImg = w.images ? w.images[0] : (w.img || "📦");
+                  return (
+                    <div key={w.id} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 rounded-2xl border border-gray-100 shadow-sm">
+                      <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center overflow-hidden border shrink-0">
+                        {pImg.includes('http') ? <img src={pImg} alt="wish" className="w-full h-full object-cover" /> : <span className="text-xl">{pImg}</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-xs text-gray-800 truncate">{w.name}</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-xs font-black text-orange-600">₹{pPrice}</span>
+                          {w.discount > 0 && <span className="text-[9px] text-gray-400 line-through">₹{w.price}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => { addToCart(w); toggleWishlist(w); }} className="bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl font-extrabold text-[10px] shadow-sm">
+                          + Bag
+                        </button>
+                        <button onClick={() => toggleWishlist(w)} className="text-red-500 font-bold p-1 bg-white border rounded-xl">
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Push Announcements Module Sheet */}
+      {/* Push Announcements Sheet */}
       {isNotifOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-5 max-w-sm w-full max-h-[60vh] overflow-y-auto text-black space-y-3">
@@ -1443,7 +1561,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Highly Professional Cash Memo Invoice Panel */}
+      {/* Cash Memo Invoice Panel */}
       {showInvoice && (
         <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">

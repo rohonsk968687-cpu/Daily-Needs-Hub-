@@ -134,6 +134,12 @@ export default function App() {
   // Client-side transient variant selection hook
   const [selectedSizes, setSelectedSizes] = useState({});
 
+  // Admin Selected Category State for Add Product Form (Point 3)
+  const [adminSelectedCategory, setAdminSelectedCategory] = useState(categories[1]);
+
+  // Expanded Category State for Category View Tab (Point 2)
+  const [expandedCategory, setExpandedCategory] = useState(null);
+
   // Combined state management for Profile and Address parameters
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
@@ -378,6 +384,7 @@ export default function App() {
         availableSizes: activeSizesArray
       });
       e.target.reset();
+      setAdminSelectedCategory(categories[1]);
       alert("Product batch deployed successfully!");
     } catch (error) {
       alert("Database engine write failure!");
@@ -542,7 +549,6 @@ export default function App() {
   const sendWhatsAppNotification = () => {
     const itemsMsg = cart.map(i => `${i.name} ${i.selectedSize ? `(Size: ${i.selectedSize})` : ''} (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
-    const modeLabel = paymentType === "COD" ? "Cash on Delivery (COD)" : "UPI Intent Flow Complete";
     const msg = `New Order Confirmed - Daily Needs Hub\nOrder ID: ${currentOrderId}\nCustomer Name: ${custInfo.name}\nContact: ${custInfo.phone}\nAddress: ${fullAddressString}\nItems Summary: ${itemsMsg}\nTotal Bill: ₹${cartTotal}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     
@@ -728,16 +734,37 @@ export default function App() {
                     )}
 
                     {/* Add Item Form Payload Engine (Admin Tab 2) */}
+                    {/* POINT 3 UPDATED: Dynamic Category and Sub-Category Select Dropdown Matrix */}
                     {adminTab === "add-item" && (
                       <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-black">
                         <h3 className="text-xs font-black text-orange-600 uppercase tracking-wider">📦 Inject New Stock Payload</h3>
                         <input name="itemName" placeholder="Item / Product Name Title *" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
                         
                         <div className="grid grid-cols-2 gap-2">
-                          <select name="itemCategory" className="border p-3 rounded-xl bg-gray-50 text-xs font-black">
-                            {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
-                          <input name="itemSubCategory" placeholder="Sub Category Name (e.g. Soap, T-Shirts)" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" />
+                          <div>
+                            <label className="text-[9px] font-black text-gray-400 uppercase block mb-1">Select Category *</label>
+                            <select 
+                              name="itemCategory" 
+                              value={adminSelectedCategory}
+                              onChange={(e) => setAdminSelectedCategory(e.target.value)}
+                              className="border p-3 w-full rounded-xl bg-gray-50 text-xs font-black"
+                            >
+                              {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-black text-gray-400 uppercase block mb-1">Select Sub-Category *</label>
+                            <select 
+                              name="itemSubCategory" 
+                              className="border p-3 w-full rounded-xl bg-gray-50 text-xs font-bold"
+                            >
+                              <option value="General">General</option>
+                              {subCategoriesMap[adminSelectedCategory] && subCategoriesMap[adminSelectedCategory].map(sub => (
+                                <option key={sub.name} value={sub.name}>{sub.icon} {sub.name}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-3 gap-2">
@@ -955,18 +982,80 @@ export default function App() {
               </>
             )}
 
+            {/* POINT 2 UPDATED: Interactive Sub-Category Expansion in Category Section */}
             {activeTab === "categories" && (
               <div className="px-4 mb-4">
                 <div className="bg-gradient-to-r from-emerald-600 to-teal-500 p-5 rounded-3xl text-white mb-6 shadow-md">
                   <h2 className="text-xl font-black">All Categories & Departments</h2>
+                  <p className="text-xs opacity-90">Tap on any category to view its sub-categories</p>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {categories.map(c => (
-                    <button key={c} onClick={() => { setActiveCategory(c); setActiveSubCategory("All"); setActiveTab("shop"); }} className={`p-5 rounded-2xl bg-white text-left shadow-md border-2 font-black flex flex-col justify-between min-h-[100px] ${activeCategory === c ? 'border-orange-500 text-orange-600' : 'border-gray-100 text-gray-700'}`}>
-                      <span className="text-3xl">{getCategoryEmoji(c)}</span>
-                      <span className="text-xs font-extrabold mt-1">{c}</span>
-                    </button>
-                  ))}
+                <div className="space-y-3">
+                  {categories.map(c => {
+                    const isAll = c === "All";
+                    const isExpanded = expandedCategory === c;
+                    const subs = subCategoriesMap[c] || [];
+
+                    return (
+                      <div key={c} className="bg-white rounded-2xl shadow-md border-2 border-gray-100 overflow-hidden transition-all">
+                        <button 
+                          onClick={() => {
+                            if (isAll) {
+                              setActiveCategory("All");
+                              setActiveSubCategory("All");
+                              setActiveTab("shop");
+                            } else {
+                              setExpandedCategory(isExpanded ? null : c);
+                            }
+                          }} 
+                          className={`w-full p-4 text-left font-black flex items-center justify-between ${activeCategory === c ? 'text-orange-600' : 'text-gray-800'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-3xl">{getCategoryEmoji(c)}</span>
+                            <div className="flex flex-col">
+                              <span className="text-sm font-extrabold">{c}</span>
+                              {!isAll && subs.length > 0 && <span className="text-[10px] text-gray-400 font-semibold">{subs.length} Sub-categories</span>}
+                            </div>
+                          </div>
+                          {!isAll && (
+                            <span className="text-gray-400 font-black text-sm bg-gray-50 px-2 py-1 rounded-lg border">
+                              {isExpanded ? '▲' : '▼'}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Interactive Sub-Category Accordion Panel */}
+                        {!isAll && isExpanded && (
+                          <div className="bg-orange-50/50 p-3 border-t border-orange-100 grid grid-cols-2 gap-2 animate-fadeIn">
+                            <button
+                              onClick={() => {
+                                setActiveCategory(c);
+                                setActiveSubCategory("All");
+                                setActiveTab("shop");
+                              }}
+                              className="p-2.5 rounded-xl bg-emerald-600 text-white font-extrabold text-xs text-left shadow-sm flex items-center gap-2 col-span-2"
+                            >
+                              <span>🌟</span>
+                              <span>View All {c} Items</span>
+                            </button>
+                            {subs.map(sub => (
+                              <button
+                                key={sub.name}
+                                onClick={() => {
+                                  setActiveCategory(c);
+                                  setActiveSubCategory(sub.name);
+                                  setActiveTab("shop");
+                                }}
+                                className="p-2.5 rounded-xl bg-white text-gray-800 border border-orange-200/80 font-bold text-xs text-left shadow-sm flex items-center gap-2 hover:bg-orange-100 transition-all"
+                              >
+                                <span className="text-lg">{sub.icon}</span>
+                                <span className="truncate">{sub.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1179,14 +1268,14 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Interactive Sub-Category Visual Chips Bar */}
+                {/* POINT 1 UPDATED: Larger & Premium Interactive Sub-Category Visual Chips Bar */}
                 {activeCategory !== "All" && subCategoriesMap[activeCategory] && (
-                  <div className="px-4 py-2 bg-orange-50/60 border-y border-orange-100 max-w-md mx-auto mb-2">
-                    <p className="text-[9px] font-black text-orange-600 uppercase tracking-wider mb-1.5">Sub-Categories:</p>
-                    <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                  <div className="px-4 py-3 bg-orange-50/70 border-y border-orange-200 max-w-md mx-auto mb-3 shadow-inner">
+                    <p className="text-[10px] font-black text-orange-600 uppercase tracking-wider mb-2">Sub-Categories:</p>
+                    <div className="flex gap-2.5 overflow-x-auto no-scrollbar py-1">
                       <button
                         onClick={() => setActiveSubCategory("All")}
-                        className={`px-3 py-1 rounded-xl text-[10px] font-bold border transition-all whitespace-nowrap ${activeSubCategory === "All" ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white text-gray-700 border-gray-200'}`}
+                        className={`px-4 py-2 rounded-2xl text-xs font-black border-2 transition-all whitespace-nowrap shadow-sm active:scale-95 ${activeSubCategory === "All" ? 'bg-emerald-600 text-white border-emerald-700 shadow-md' : 'bg-white text-gray-700 border-gray-200'}`}
                       >
                         🌟 All Items
                       </button>
@@ -1194,9 +1283,9 @@ export default function App() {
                         <button
                           key={sub.name}
                           onClick={() => setActiveSubCategory(sub.name)}
-                          className={`px-3 py-1 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 whitespace-nowrap ${activeSubCategory === sub.name ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' : 'bg-white text-gray-700 border-gray-200'}`}
+                          className={`px-4 py-2 rounded-2xl text-xs font-black border-2 transition-all flex items-center gap-2 whitespace-nowrap shadow-sm active:scale-95 ${activeSubCategory === sub.name ? 'bg-emerald-600 text-white border-emerald-700 shadow-md' : 'bg-white text-gray-800 border-orange-200/80'}`}
                         >
-                          <span>{sub.icon}</span>
+                          <span className="text-base">{sub.icon}</span>
                           <span>{sub.name}</span>
                         </button>
                       ))}

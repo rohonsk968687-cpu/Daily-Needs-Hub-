@@ -359,10 +359,20 @@ export default function App() {
     }
   };
 
+  // POINT 2 UPDATED: 5 Separate Image URLs Extraction Flow
   const addProduct = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
-    const imgArray = el.itemImg.value.split(",").map(url => url.trim());
+
+    // Collect all 5 Image Inputs and filter valid non-empty links
+    const img1 = el.itemImg1?.value?.trim() || "";
+    const img2 = el.itemImg2?.value?.trim() || "";
+    const img3 = el.itemImg3?.value?.trim() || "";
+    const img4 = el.itemImg4?.value?.trim() || "";
+    const img5 = el.itemImg5?.value?.trim() || "";
+
+    const rawImagesArray = [img1, img2, img3, img4, img5].filter(url => url !== "");
+    const imgArray = rawImagesArray.length > 0 ? rawImagesArray : ["📦"];
 
     const activeSizesArray = [];
     const sizeCheckboxes = e.target.querySelectorAll('input[name="adminSizes"]:checked');
@@ -374,7 +384,7 @@ export default function App() {
         price: Number(el.itemPrice.value), 
         stock: Number(el.itemStock.value), 
         discount: Number(el.itemDiscount.value) || 0, 
-        images: imgArray.length > 0 && imgArray[0] !== "" ? imgArray : ["📦"], 
+        images: imgArray, 
         category: el.itemCategory.value,
         subCategory: el.itemSubCategory.value || "General",
         offerTag: el.itemOfferTag.value || "None",
@@ -385,7 +395,7 @@ export default function App() {
       });
       e.target.reset();
       setAdminSelectedCategory(categories[1]);
-      alert("Product batch deployed successfully!");
+      alert("Product batch deployed successfully with multi-images!");
     } catch (error) {
       alert("Database engine write failure!");
     }
@@ -737,7 +747,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Add Item Form Payload Engine (Admin Tab 2) */}
+                      {/* Add Item Form Payload Engine (Admin Tab 2 - POINT 1 & 2 UPDATED) */}
                       {adminTab === "add-item" && (
                         <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-black">
                           <h3 className="text-xs font-black text-orange-600 uppercase tracking-wider">📦 Inject New Stock Payload</h3>
@@ -784,20 +794,62 @@ export default function App() {
                             </select>
                           </div>
                             
-                          {/* Interactive Sizing Checkboxes Matrix */}
-                          <div className="bg-gray-50 p-2.5 rounded-xl border space-y-1">
-                            <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block">Available Sizes (If Shoes or Apparel):</label>
-                            <div className="flex flex-wrap gap-2 text-[10px] font-bold text-gray-700 pt-0.5">
-                              {["UK 6", "UK 7", "UK 8", "UK 9", "UK 10", "S", "M", "L", "XL", "XXL", "Free Size"].map(sz => (
-                                <label key={sz} className="flex items-center gap-1 bg-white px-2 py-1 rounded border shadow-sm cursor-pointer">
-                                  <input type="checkbox" value={sz} name="adminSizes" className="rounded text-emerald-600" />
-                                  {sz}
-                                </label>
-                              ))}
+                          {/* POINT 1 UPDATED: Dynamic Sizing Checkboxes for Kids (1-13), Adult Shoes (1-10) and Apparel */}
+                          <div className="bg-gray-50 p-3 rounded-2xl border space-y-2">
+                            <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block border-b pb-1">Available Sizes Checklist:</label>
+                            
+                            {/* Footwear Adult Sizes (1 to 10) */}
+                            <div>
+                              <span className="text-[8px] font-black text-emerald-600 uppercase block mb-1">👞 Adult Footwear (UK 1 - 10):</span>
+                              <div className="flex flex-wrap gap-1.5 text-[9px] font-bold text-gray-700">
+                                {["UK 1", "UK 2", "UK 3", "UK 4", "UK 5", "UK 6", "UK 7", "UK 8", "UK 9", "UK 10"].map(sz => (
+                                  <label key={sz} className="flex items-center gap-1 bg-white px-2 py-0.5 rounded border shadow-sm cursor-pointer">
+                                    <input type="checkbox" value={sz} name="adminSizes" className="rounded text-emerald-600" />
+                                    {sz}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Footwear Kids Sizes (1 to 13) */}
+                            <div>
+                              <span className="text-[8px] font-black text-indigo-600 uppercase block mb-1">👶 Kids Footwear (Kids 1 - 13):</span>
+                              <div className="flex flex-wrap gap-1.5 text-[9px] font-bold text-gray-700">
+                                {["Kids 1", "Kids 2", "Kids 3", "Kids 4", "Kids 5", "Kids 6", "Kids 7", "Kids 8", "Kids 9", "Kids 10", "Kids 11", "Kids 12", "Kids 13"].map(sz => (
+                                  <label key={sz} className="flex items-center gap-1 bg-white px-2 py-0.5 rounded border shadow-sm cursor-pointer">
+                                    <input type="checkbox" value={sz} name="adminSizes" className="rounded text-indigo-600" />
+                                    {sz}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Apparel Sizes */}
+                            <div>
+                              <span className="text-[8px] font-black text-orange-600 uppercase block mb-1">👕 Fashion & Clothing:</span>
+                              <div className="flex flex-wrap gap-1.5 text-[9px] font-bold text-gray-700">
+                                {["S", "M", "L", "XL", "XXL", "Free Size"].map(sz => (
+                                  <label key={sz} className="flex items-center gap-1 bg-white px-2 py-0.5 rounded border shadow-sm cursor-pointer">
+                                    <input type="checkbox" value={sz} name="adminSizes" className="rounded text-orange-600" />
+                                    {sz}
+                                  </label>
+                                ))}
+                              </div>
                             </div>
                           </div>
 
-                          <input name="itemImg" placeholder="Multiple Links (Separated by Comma)" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" required />
+                          {/* POINT 2 UPDATED: 5 Separate Image URL Input Fields */}
+                          <div className="bg-gray-50 p-3 rounded-2xl border space-y-2">
+                            <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block border-b pb-1">Upload Product Images (Up to 5 URLs):</label>
+                            <div className="grid gap-2">
+                              <input name="itemImg1" placeholder="Image URL 1 (Main Thumbnail) *" className="border p-2.5 rounded-xl bg-white text-xs font-semibold" required />
+                              <input name="itemImg2" placeholder="Image URL 2 (Optional)" className="border p-2.5 rounded-xl bg-white text-xs font-semibold" />
+                              <input name="itemImg3" placeholder="Image URL 3 (Optional)" className="border p-2.5 rounded-xl bg-white text-xs font-semibold" />
+                              <input name="itemImg4" placeholder="Image URL 4 (Optional)" className="border p-2.5 rounded-xl bg-white text-xs font-semibold" />
+                              <input name="itemImg5" placeholder="Image URL 5 (Optional)" className="border p-2.5 rounded-xl bg-white text-xs font-semibold" />
+                            </div>
+                          </div>
+
                           <textarea name="itemSpecs" placeholder="Product Details / Specifications" className="border p-3 rounded-xl bg-gray-50 text-xs font-semibold" rows="2" />
                             
                           <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white p-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow transition-all">ADD PRODUCT TO LIVE NODES</button>
@@ -984,7 +1036,7 @@ export default function App() {
                 </>
               )}
 
-              {/* POINT 1 FIXED: ULTRA-PROFESSIONAL SUB-CATEGORY GRID ACCORDION MATRIX */}
+              {/* ULTRA-PROFESSIONAL SUB-CATEGORY GRID ACCORDION MATRIX */}
               {activeTab === "categories" && (
                 <div className="px-4 mb-4">
                   <div className="bg-gradient-to-r from-emerald-600 to-teal-500 p-5 rounded-3xl text-white mb-6 shadow-md">
@@ -1258,7 +1310,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* POINT 2 FIXED: DESKTOP & MOBILE RESPONSIVE PRODUCT GRID SYSTEM */}
+              {/* DESKTOP & MOBILE RESPONSIVE PRODUCT GRID SYSTEM */}
               {activeTab !== "categories" && activeTab !== "account" && (
                 <>
                   {/* Horizontal Category Slider Bar */}

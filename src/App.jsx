@@ -147,6 +147,11 @@ export default function App() {
   // Expanded Category State for Category View Tab
   const [expandedCategory, setExpandedCategory] = useState(null);
 
+  // Admin Stock Grid Search & Edit Modal States
+  const [adminSearchQuery, setAdminSearchQuery] = useState("");
+  const [adminCategoryFilter, setAdminCategoryFilter] = useState("All");
+  const [editingProduct, setEditingProduct] = useState(null);
+
   // Combined state management for Profile and Address parameters
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
@@ -402,6 +407,39 @@ export default function App() {
     }
   };
 
+  // Full Product Edit Handler for Admin Modal
+  const handleSaveFullProductEdit = async (e) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    const el = e.target.elements;
+
+    const img1 = el.editImg1?.value?.trim() || "";
+    const img2 = el.editImg2?.value?.trim() || "";
+    const img3 = el.editImg3?.value?.trim() || "";
+    const img4 = el.editImg4?.value?.trim() || "";
+    const img5 = el.editImg5?.value?.trim() || "";
+
+    const rawImagesArray = [img1, img2, img3, img4, img5].filter(url => url !== "");
+    const imgArray = rawImagesArray.length > 0 ? rawImagesArray : editingProduct.images;
+
+    try {
+      await updateDoc(doc(db, "products", editingProduct.id), {
+        name: el.editName.value,
+        category: el.editCategory.value,
+        subCategory: el.editSubCategory.value,
+        price: Number(el.editPrice.value),
+        discount: Number(el.editDiscount.value) || 0,
+        stock: Number(el.editStock.value),
+        specifications: el.editSpecs.value,
+        images: imgArray
+      });
+      setEditingProduct(null);
+      alert("Product updated successfully in cloud database!");
+    } catch (err) {
+      alert("Error updating product details!");
+    }
+  };
+
   const sendBroadcastNotification = async (e) => {
     e.preventDefault();
     const text = e.target.elements.notifText.value;
@@ -471,6 +509,13 @@ export default function App() {
       const matchesSubCategory = activeSubCategory === "All" || p.subCategory === activeSubCategory;
       return matchesSearch && matchesCategory && matchesSubCategory;
     }
+  });
+
+  // Admin Stock Grid Filtered Products List
+  const adminFilteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(adminSearchQuery.toLowerCase());
+    const matchesCategory = adminCategoryFilter === "All" || p.category === adminCategoryFilter;
+    return matchesSearch && matchesCategory;
   });
 
   const checkOperationalHours = () => {
@@ -870,57 +915,84 @@ export default function App() {
                         </form>
                       )}
 
-                      {/* Quick Counters Inventory Manager Sheet (Admin Tab 3) */}
+                      {/* UPGRADED STOCK CONTROLLER GRID WITH SEARCH, CATEGORY FILTER & FULL EDIT MODAL (Admin Tab 3) */}
                       {adminTab === "manage-items" && (
-                        <div className="bg-white rounded-3xl space-y-4 text-black">
+                        <div className="bg-white rounded-3xl space-y-4 text-black p-2">
                           <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider border-b pb-2">📋 Stock Controller Grid Metadata</h3>
-                          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-                            {products.map(p => {
-                              const isLow = p.stock < 5;
-                              return (
-                                <div key={p.id} className={`p-3 rounded-2xl flex flex-col gap-2 border transition-all ${isLow ? 'bg-red-50/40 border-red-200' : 'bg-gray-50/50'}`}>
-                                  <div className="flex justify-between items-start">
-                                    <div>
-                                      <span className="text-xs font-black text-gray-800 truncate block max-w-[200px]">{p.name}</span>
-                                      <span className="text-[9px] text-gray-400 font-bold">{p.category} → {p.subCategory || "General"}</span>
-                                    </div>
-                                    <button onClick={async () => { if(window.confirm("Delete asset item?")) await deleteDoc(doc(db, "products", p.id)); }} className="text-[10px] text-red-500 font-bold underline">Delete</button>
-                                  </div>
-                                    
-                                  <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-xl border border-gray-100">
-                                    <div className="flex flex-col gap-0.5">
-                                      <label className="text-[8px] font-black text-gray-400 uppercase">Price (₹ MRP)</label>
-                                      <input 
-                                        type="number" 
-                                        defaultValue={p.price} 
-                                        className="border rounded p-1 text-xs font-bold w-full bg-gray-50"
-                                        onBlur={(e) => updateProductData(p.id, "price", e.target.value)}
-                                      />
-                                    </div>
-                                    <div className="flex flex-col gap-0.5">
-                                      <label className="text-[8px] font-black text-gray-400 uppercase">Discount Rate %</label>
-                                      <input 
-                                        type="number" 
-                                        defaultValue={p.discount || 0} 
-                                        className="border rounded p-1 text-xs font-bold w-full bg-gray-50"
-                                        onBlur={(e) => updateProductData(p.id, "discount", e.target.value)}
-                                      />
-                                    </div>
-                                  </div>
+                          
+                          {/* Search & Category Filter Control Bar */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-2xl border">
+                            <input 
+                              type="text" 
+                              placeholder="🔍 Instant Search 200+ Products..." 
+                              value={adminSearchQuery}
+                              onChange={(e) => setAdminSearchQuery(e.target.value)}
+                              className="border p-2.5 rounded-xl bg-white text-xs font-bold text-black focus:outline-none"
+                            />
+                            <select 
+                              value={adminCategoryFilter} 
+                              onChange={(e) => setAdminCategoryFilter(e.target.value)}
+                              className="border p-2.5 rounded-xl bg-white text-xs font-black text-gray-800"
+                            >
+                              {categories.map(cat => <option key={cat} value={cat}>{cat === "All" ? "Filter All Categories" : cat}</option>)}
+                            </select>
+                          </div>
 
-                                  <div className="flex justify-between items-center pt-1 border-t border-dashed">
-                                    <div className="text-[9px] text-gray-400 font-bold">
-                                      {p.availableSizes && p.availableSizes.length > 0 ? `Sizes: ${p.availableSizes.join(', ')}` : 'Standard Unit'}
+                          {/* Product Grid Items Stream */}
+                          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                            {adminFilteredProducts.length === 0 ? (
+                              <p className="text-center text-xs font-bold text-gray-400 py-8">No matching items found in inventory.</p>
+                            ) : (
+                              adminFilteredProducts.map(p => {
+                                const isLow = p.stock < 5;
+                                return (
+                                  <div key={p.id} className={`p-3 rounded-2xl flex flex-col gap-2 border transition-all ${isLow ? 'bg-red-50/40 border-red-200' : 'bg-gray-50/50'}`}>
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <span className="text-xs font-black text-gray-800 truncate block max-w-[200px]">{p.name}</span>
+                                        <span className="text-[9px] text-gray-400 font-bold">{p.category} → {p.subCategory || "General"}</span>
+                                      </div>
+                                      <div className="flex gap-2 items-center">
+                                        <button onClick={() => setEditingProduct(p)} className="text-[10px] bg-blue-50 text-blue-600 font-extrabold border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-100 transition-all">✏️ Edit</button>
+                                        <button onClick={async () => { if(window.confirm("Delete asset item?")) await deleteDoc(doc(db, "products", p.id)); }} className="text-[10px] text-red-500 font-bold underline">Delete</button>
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      <button onClick={() => updateProductData(p.id, "stock", Math.max(0, p.stock - 1))} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">-</button>
-                                      <span className={`text-xs font-black px-2 ${isLow ? 'text-red-600' : 'text-slate-800'}`}>Stock: {p.stock}</span>
-                                      <button onClick={() => updateProductData(p.id, "stock", p.stock + 1)} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">+</button>
+                                      
+                                    <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-xl border border-gray-100">
+                                      <div className="flex flex-col gap-0.5">
+                                        <label className="text-[8px] font-black text-gray-400 uppercase">Price (₹ MRP)</label>
+                                        <input 
+                                          type="number" 
+                                          defaultValue={p.price} 
+                                          className="border rounded p-1 text-xs font-bold w-full bg-gray-50"
+                                          onBlur={(e) => updateProductData(p.id, "price", e.target.value)}
+                                        />
+                                      </div>
+                                      <div className="flex flex-col gap-0.5">
+                                        <label className="text-[8px] font-black text-gray-400 uppercase">Discount Rate %</label>
+                                        <input 
+                                          type="number" 
+                                          defaultValue={p.discount || 0} 
+                                          className="border rounded p-1 text-xs font-bold w-full bg-gray-50"
+                                          onBlur={(e) => updateProductData(p.id, "discount", e.target.value)}
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-center pt-1 border-t border-dashed">
+                                      <div className="text-[9px] text-gray-400 font-bold">
+                                        {p.availableSizes && p.availableSizes.length > 0 ? `Sizes: ${p.availableSizes.join(', ')}` : 'Standard Unit'}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <button onClick={() => updateProductData(p.id, "stock", Math.max(0, p.stock - 1))} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">-</button>
+                                        <span className={`text-xs font-black px-2 ${isLow ? 'text-red-600' : 'text-slate-800'}`}>Stock: {p.stock}</span>
+                                        <button onClick={() => updateProductData(p.id, "stock", p.stock + 1)} className="w-6 h-6 bg-white border font-black text-xs rounded-md shadow-sm flex items-center justify-center">+</button>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })
+                            )}
                           </div>
                         </div>
                       )}
@@ -1812,6 +1884,89 @@ export default function App() {
             </button>
           </div>
 
+        </div>
+      )}
+
+      {/* FULL PRODUCT EDIT MODAL FOR ADMIN */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 max-w-lg w-full space-y-4 text-black overflow-y-auto max-h-[90vh] shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black text-sm text-orange-600 uppercase">✏️ Edit Complete Product Details</h3>
+              <button onClick={() => setEditingProduct(null)} className="text-xs bg-gray-100 px-2.5 py-1 rounded-lg font-bold">X Close</button>
+            </div>
+
+            <form onSubmit={handleSaveFullProductEdit} className="space-y-3">
+              <div>
+                <label className="text-[9px] font-black text-gray-400 uppercase">Product Name Title *</label>
+                <input name="editName" defaultValue={editingProduct.name} className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold text-black" required />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[9px] font-black text-gray-400 uppercase">Category *</label>
+                  <select name="editCategory" defaultValue={editingProduct.category} className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold text-black">
+                    {categories.slice(1).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-gray-400 uppercase">Sub-Category *</label>
+                  <input name="editSubCategory" defaultValue={editingProduct.subCategory || "General"} className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold text-black" required />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] font-black text-gray-400 uppercase">MRP (₹) *</label>
+                  <input name="editPrice" type="number" defaultValue={editingProduct.price} className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold text-black" required />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-gray-400 uppercase">Discount %</label>
+                  <input name="editDiscount" type="number" defaultValue={editingProduct.discount || 0} className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold text-black" />
+                </div>
+                <div>
+                  <label className="text-[9px] font-black text-gray-400 uppercase">Stock Qty *</label>
+                  <input name="editStock" type="number" defaultValue={editingProduct.stock} className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-bold text-black" required />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-gray-400 uppercase">Product Image URLs (1 to 5)</label>
+                <div className="grid gap-1.5">
+                  <input name="editImg1" defaultValue={editingProduct.images?.[0] || ""} placeholder="Image 1 URL" className="w-full p-2 border rounded-lg bg-gray-50 text-[10px] font-semibold" />
+                  <input name="editImg2" defaultValue={editingProduct.images?.[1] || ""} placeholder="Image 2 URL" className="w-full p-2 border rounded-lg bg-gray-50 text-[10px] font-semibold" />
+                  <input name="editImg3" defaultValue={editingProduct.images?.[2] || ""} placeholder="Image 3 URL" className="w-full p-2 border rounded-lg bg-gray-50 text-[10px] font-semibold" />
+                  <input name="editImg4" defaultValue={editingProduct.images?.[3] || ""} placeholder="Image 4 URL" className="w-full p-2 border rounded-lg bg-gray-50 text-[10px] font-semibold" />
+                  <input name="editImg5" defaultValue={editingProduct.images?.[4] || ""} placeholder="Image 5 URL" className="w-full p-2 border rounded-lg bg-gray-50 text-[10px] font-semibold" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[9px] font-black text-gray-400 uppercase">Product Specifications & Description</label>
+                <textarea name="editSpecs" defaultValue={editingProduct.specifications || ""} rows="3" className="w-full p-2.5 border rounded-xl bg-gray-50 text-xs font-semibold text-black" />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setEditingProduct(null)} className="flex-1 py-3 bg-gray-100 font-black text-xs rounded-xl">Cancel</button>
+                <button type="submit" className="flex-1 py-3 bg-emerald-600 text-white font-black text-xs rounded-xl shadow">Save All Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Legal Content Modals */}
+      {legalModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-black border shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black text-sm text-orange-600">{legalModal.title}</h3>
+              <button onClick={() => setLegalModal({ isOpen: false, title: '', content: '' })} className="text-xs bg-gray-100 px-2.5 py-1 rounded-lg font-bold hover:bg-gray-200">Close X</button>
+            </div>
+            <p className="text-xs text-gray-700 leading-relaxed font-semibold whitespace-pre-line bg-gray-50 p-4 rounded-2xl border border-gray-100 max-h-[50vh] overflow-y-auto">
+              {legalModal.content}
+            </p>
+          </div>
         </div>
       )}
 

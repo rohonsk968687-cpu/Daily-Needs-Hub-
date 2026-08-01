@@ -134,6 +134,13 @@ export default function App() {
   // Client-side transient variant selection hook
   const [selectedSizes, setSelectedSizes] = useState({});
 
+  // Product Page Local Quantity Selector State
+  const [productPageQty, setProductPageQty] = useState(1);
+
+  // Delivery Pin Code Check State for Flipkart View
+  const [pinCheckInput, setPinCheckInput] = useState("");
+  const [pinCheckMsg, setPinCheckMsg] = useState(null);
+
   // Admin Selected Category State for Add Product Form
   const [adminSelectedCategory, setAdminSelectedCategory] = useState(categories[1]);
 
@@ -174,12 +181,10 @@ export default function App() {
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
-        // Load User Cart
         const cartDoc = await getDoc(doc(db, "carts", user.uid));
         if (cartDoc.exists()) {
           setCart(cartDoc.data().items || []);
         }
-        // Load Profile & Location Data Meta Node from Firestore
         const profileDoc = await getDoc(doc(db, "profiles", user.uid));
         if (profileDoc.exists()) {
           setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
@@ -211,7 +216,6 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
         setUser(currentUser);
-        // Automatic address recovery upon repeat login
         const profileDoc = await getDoc(doc(db, "profiles", currentUser.uid));
         if (profileDoc.exists()) {
           setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
@@ -315,10 +319,9 @@ export default function App() {
     return Math.round(price - (price * discount) / 100);
   };
 
-  const addToCart = (p) => {
+  const addToCart = (p, quantity = 1) => {
     if (p.stock <= 0) return alert("Requested product payload is currently out of stock!");
 
-    // Mandatory size selection rules for footwear or apparel items
     if ((p.category === "Shoes & Footwear" || p.category === "Fashion & Clothing") && !selectedSizes[p.id] && p.availableSizes && p.availableSizes.length > 0) {
       return alert("Kripya is item ka size select karein tabhi item bag me add hoga!");
     }
@@ -328,10 +331,10 @@ export default function App() {
     let updatedCart = [];
 
     if (exist) {
-      if (exist.qty >= p.stock) return alert("Inventory limit reached for this specific item size!");
-      updatedCart = cart.map(x => (x.id === p.id && x.selectedSize === chosenSize) ? { ...exist, qty: exist.qty + 1 } : x);
+      if (exist.qty + quantity > p.stock) return alert("Inventory limit reached for this specific item!");
+      updatedCart = cart.map(x => (x.id === p.id && x.selectedSize === chosenSize) ? { ...exist, qty: exist.qty + quantity } : x);
     } else {
-      updatedCart = [...cart, { ...p, qty: 1, selectedSize: chosenSize }];
+      updatedCart = [...cart, { ...p, qty: quantity, selectedSize: chosenSize }];
     }
     syncCart(updatedCart);
   };
@@ -359,12 +362,10 @@ export default function App() {
     }
   };
 
-  // POINT 2 UPDATED: 5 Separate Image URLs Extraction Flow
   const addProduct = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
 
-    // Collect all 5 Image Inputs and filter valid non-empty links
     const img1 = el.itemImg1?.value?.trim() || "";
     const img2 = el.itemImg2?.value?.trim() || "";
     const img3 = el.itemImg3?.value?.trim() || "";
@@ -631,6 +632,19 @@ export default function App() {
     return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${cartTotal}&tn=${encodeURIComponent(note)}&cu=INR`;
   };
 
+  const handlePinCheck = (pin) => {
+    setPinCheckInput(pin);
+    if (!pin || pin.length < 6) {
+      setPinCheckMsg(null);
+      return;
+    }
+    if (ALLOWED_PINS.includes(pin.trim())) {
+      setPinCheckMsg({ type: "success", text: "✅ Express 30-Min Delivery Available at " + pin });
+    } else {
+      setPinCheckMsg({ type: "error", text: "❌ Sorry, we do not deliver to PIN " + pin + " yet!" });
+    }
+  };
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-amber-50/60 via-white to-emerald-50/60 text-gray-900'} pb-32 transition-all duration-500 font-sans`}>
       
@@ -747,7 +761,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Add Item Form Payload Engine (Admin Tab 2 - POINT 1 & 2 UPDATED) */}
+                      {/* Add Item Form Payload Engine (Admin Tab 2) */}
                       {adminTab === "add-item" && (
                         <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-black">
                           <h3 className="text-xs font-black text-orange-600 uppercase tracking-wider">📦 Inject New Stock Payload</h3>
@@ -794,7 +808,7 @@ export default function App() {
                             </select>
                           </div>
                             
-                          {/* POINT 1 UPDATED: Dynamic Sizing Checkboxes for Kids (1-13), Adult Shoes (1-10) and Apparel */}
+                          {/* Dynamic Sizing Checkboxes for Kids (1-13), Adult Shoes (1-10) and Apparel */}
                           <div className="bg-gray-50 p-3 rounded-2xl border space-y-2">
                             <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block border-b pb-1">Available Sizes Checklist:</label>
                             
@@ -838,7 +852,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* POINT 2 UPDATED: 5 Separate Image URL Input Fields */}
+                          {/* 5 Separate Image URL Input Fields */}
                           <div className="bg-gray-50 p-3 rounded-2xl border space-y-2">
                             <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block border-b pb-1">Upload Product Images (Up to 5 URLs):</label>
                             <div className="grid gap-2">
@@ -1388,13 +1402,13 @@ export default function App() {
                                {isWish ? "❤️" : "🤍"}
                              </button>
 
-                             <div onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="h-36 md:h-44 flex items-center justify-center mb-2 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden cursor-pointer">
+                             <div onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); setProductPageQty(1); setPinCheckMsg(null); }} className="h-36 md:h-44 flex items-center justify-center mb-2 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden cursor-pointer">
                                {pImages[0].includes('http') ? <img src={pImages[0]} alt="product" className="h-full w-full object-cover rounded-2xl hover:scale-105 transition-transform duration-500" /> : <span className="text-5xl">{pImages[0]}</span>}
                              </div>
 
                              <div className="px-1 text-center flex-1 flex flex-col justify-between">
                                <div>
-                                 <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); }} className="font-extrabold text-gray-800 text-xs md:text-sm truncate cursor-pointer underline">{p.name}</h3>
+                                 <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); setProductPageQty(1); setPinCheckMsg(null); }} className="font-extrabold text-gray-800 text-xs md:text-sm truncate cursor-pointer underline">{p.name}</h3>
                                    
                                  {/* Dynamic Sizing Selector */}
                                  {(p.availableSizes && p.availableSizes.length > 0) && (
@@ -1607,219 +1621,197 @@ export default function App() {
         </div>
       )}
 
-      {/* Product Deep View Slideshow & Details Sheet */}
+      {/* FLIPKART-STYLE FULL SCREEN PRODUCT DETAILS PAGE OVERLAY */}
       {selectedProduct && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-5 max-w-md w-full space-y-4 text-black overflow-y-auto max-h-[90vh]">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="font-black text-sm truncate">{selectedProduct.name}</h3>
-              <button onClick={() => setSelectedProduct(null)} className="text-xs bg-gray-100 px-2.5 py-1 rounded-lg font-bold hover:bg-gray-200">X Close</button>
+        <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-black flex flex-col justify-between animate-fadeIn">
+          
+          {/* Flipkart Style Top Bar Header */}
+          <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b border-gray-100 px-4 py-3 flex items-center justify-between shadow-sm">
+            <button 
+              onClick={() => setSelectedProduct(null)} 
+              className="flex items-center gap-2 text-sm font-extrabold text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition-all"
+            >
+              <span>←</span> <span>Back</span>
+            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => toggleWishlist(selectedProduct)} className="p-2 bg-gray-100 rounded-full text-sm">
+                {wishlist.find(x => x.id === selectedProduct.id) ? "❤️" : "🤍"}
+              </button>
+              <button onClick={() => { setSelectedProduct(null); setIsCartOpen(true); }} className="p-2 bg-orange-100 text-orange-600 rounded-full text-sm relative">
+                🛒 {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-bold">{cart.length}</span>}
+              </button>
             </div>
+          </div>
 
-            <div className="relative h-48 md:h-60 bg-gray-50 rounded-2xl overflow-hidden flex items-center justify-center border">
+          {/* Product Page Scrollable Body */}
+          <div className="max-w-3xl mx-auto w-full p-4 space-y-6 pb-28">
+            
+            {/* 1. Large Swipable Product Image Showcase */}
+            <div className="relative w-full h-80 md:h-96 bg-gradient-to-b from-orange-50/30 to-gray-50 rounded-3xl overflow-hidden border flex items-center justify-center shadow-inner">
               <img 
                 src={(selectedProduct.images || [selectedProduct.img || "📦"])[currentProductSlide]} 
                 alt="Product View" 
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain p-4 transition-all duration-300"
               />
+              
+              {/* Carousel Next/Prev Controls */}
               {(selectedProduct.images || []).length > 1 && (
-                <div className="absolute inset-x-2 bottom-2 flex justify-between">
-                  <button onClick={() => setCurrentProductSlide(prev => (prev > 0 ? prev - 1 : (selectedProduct.images.length - 1)))} className="bg-white/80 p-1.5 rounded-full text-xs shadow font-black hover:bg-white">◀</button>
-                  <button onClick={() => setCurrentProductSlide(prev => (prev < (selectedProduct.images.length - 1) ? prev + 1 : 0))} className="bg-white/80 p-1.5 rounded-full text-xs shadow font-black hover:bg-white">▶</button>
-                </div>
+                <>
+                  <button onClick={() => setCurrentProductSlide(prev => (prev > 0 ? prev - 1 : (selectedProduct.images.length - 1)))} className="absolute left-3 bg-white/90 hover:bg-white text-black p-2 rounded-full text-sm shadow-md font-black">◀</button>
+                  <button onClick={() => setCurrentProductSlide(prev => (prev < (selectedProduct.images.length - 1) ? prev + 1 : 0))} className="absolute right-3 bg-white/90 hover:bg-white text-black p-2 rounded-full text-sm shadow-md font-black">▶</button>
+                  
+                  {/* Image Counter Badge */}
+                  <div className="absolute bottom-3 right-3 bg-black/70 text-white text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm">
+                    {currentProductSlide + 1} / {selectedProduct.images.length}
+                  </div>
+                </>
               )}
             </div>
 
-            <div className="space-y-1">
-              <span className="text-[10px] font-black uppercase text-gray-400">Product Specifications</span>
-              <p className="text-xs bg-gray-50 p-3 rounded-xl border border-gray-100 font-medium text-gray-700 leading-relaxed whitespace-pre-line">
-                {selectedProduct.specifications || "Premium high quality checked grocery asset."}
-              </p>
-            </div>
-
-            <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); }} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black py-3 rounded-xl text-xs uppercase shadow transition-all">
-              Add This Item to Bag
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Wishlist Favorites Drawer Panel */}
-      {isWishlistOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-5 max-w-md w-full max-h-[75vh] overflow-y-auto text-black space-y-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="font-black text-sm text-gray-800 flex items-center gap-1.5">❤️ My Wishlist Favorites ({wishlist.length})</h3>
-              <button onClick={() => setIsWishlistOpen(false)} className="text-xs font-bold text-gray-400 border px-2 py-0.5 rounded-lg hover:bg-gray-100">X</button>
-            </div>
-            {wishlist.length === 0 ? (
-              <p className="text-xs font-bold text-center text-gray-400 py-10">No items bookmarked inside your wishlist.</p>
-            ) : (
-              <div className="space-y-3">
-                {wishlist.map(w => {
-                  const pPrice = getDiscountedPrice(w.price, w.discount);
-                  const pImg = w.images ? w.images[0] : (w.img || "📦");
-                  return (
-                    <div key={w.id} className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 rounded-2xl border border-gray-100 shadow-sm">
-                      <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center overflow-hidden border shrink-0">
-                        {pImg.includes('http') ? <img src={pImg} alt="wish" className="w-full h-full object-cover" /> : <span className="text-xl">{pImg}</span>}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black text-xs text-gray-800 truncate">{w.name}</p>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-xs font-black text-orange-600">₹{pPrice}</span>
-                          {w.discount > 0 && <span className="text-[9px] text-gray-400 line-through">₹{w.price}</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button onClick={() => { addToCart(w); toggleWishlist(w); }} className="bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl font-extrabold text-[10px] shadow-sm hover:bg-emerald-700 transition-colors">
-                          + Bag
-                        </button>
-                        <button onClick={() => toggleWishlist(w)} className="text-red-500 font-bold p-1 bg-white border rounded-xl hover:bg-red-50">
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+            {/* 2. Image Thumbnails List */}
+            {(selectedProduct.images || []).length > 1 && (
+              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                {selectedProduct.images.map((imgUrl, idx) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => setCurrentProductSlide(idx)}
+                    className={`w-16 h-16 rounded-xl border-2 overflow-hidden shrink-0 transition-all ${currentProductSlide === idx ? 'border-orange-500 scale-105 shadow-md' : 'border-gray-200 opacity-60'}`}
+                  >
+                    <img src={imgUrl} alt="thumb" className="w-full h-full object-cover" />
+                  </button>
+                ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* Push Announcements Sheet */}
-      {isNotifOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-5 max-w-md w-full max-h-[60vh] overflow-y-auto text-black space-y-3">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="font-black text-sm">🔔 Store Announcements</h3>
-              <button onClick={() => setIsNotifOpen(false)} className="text-xs font-bold text-gray-400">X</button>
+            {/* 3. Title & Rating & Offer Tag */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                {selectedProduct.offerTag && selectedProduct.offerTag !== "None" && (
+                  <span className="bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">{selectedProduct.offerTag}</span>
+                )}
+                {selectedProduct.isBestSeller && <span className="bg-amber-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">✨ Bestseller</span>}
+              </div>
+
+              <h1 className="text-xl md:text-2xl font-extrabold text-gray-900 leading-tight">{selectedProduct.name}</h1>
+              
+              {/* Flipkart Style Rating Badge */}
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-700 text-white text-xs font-black px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                  4.3 ★
+                </span>
+                <span className="text-xs text-gray-500 font-bold">(128 Ratings & Verified Buyer Reviews)</span>
+              </div>
             </div>
-            {notifications.length === 0 ? (
-              <p className="text-xs font-bold text-center text-gray-400 py-10">No newly synchronized notifications logs encountered.</p>
-            ) : (
-              notifications.map(n => (
-                <div key={n.id} className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl text-xs space-y-1">
-                  <p className="font-medium text-blue-900">{n.message}</p>
-                  <span className="text-[8px] text-gray-400 block text-right font-bold">{n.createdAt}</span>
+
+            {/* 4. Price & Discount Callout */}
+            <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100 space-y-1">
+              <div className="flex items-baseline gap-3">
+                <span className="text-2xl md:text-3xl font-black text-orange-600">₹{getDiscountedPrice(selectedProduct.price, selectedProduct.discount)}</span>
+                {selectedProduct.discount > 0 && (
+                  <>
+                    <span className="text-sm text-gray-400 line-through font-bold">₹{selectedProduct.price}</span>
+                    <span className="text-xs text-emerald-600 font-black">{selectedProduct.discount}% Special Discount Applied</span>
+                  </>
+                )}
+              </div>
+              <p className="text-[10px] text-gray-500 font-semibold">Inclusive of all local taxes & delivery charges</p>
+            </div>
+
+            {/* 5. Size Selection (If Footwear or Fashion) */}
+            {(selectedProduct.availableSizes && selectedProduct.availableSizes.length > 0) && (
+              <div className="space-y-2 border-t pt-3">
+                <label className="text-xs font-black text-gray-700 uppercase tracking-wider block">Select Preferred Variant Size *</label>
+                <div className="flex flex-wrap gap-2">
+                  {selectedProduct.availableSizes.map(sz => (
+                    <button 
+                      key={sz} 
+                      onClick={() => setSelectedSizes({ ...selectedSizes, [selectedProduct.id]: sz })}
+                      className={`px-4 py-2 rounded-xl text-xs font-black border-2 transition-all ${selectedSizes[selectedProduct.id] === sz ? 'bg-orange-500 text-white border-orange-600 shadow-md scale-105' : 'bg-gray-50 text-gray-700 border-gray-200'}`}
+                    >
+                      {sz}
+                    </button>
+                  ))}
                 </div>
-              ))
+              </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* Highly Professional Cash Memo Invoice Panel */}
-      {showInvoice && (
-        <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">
-            
-            <div className="text-center border-b-2 border-dashed border-gray-200 pb-3 space-y-0.5">
-              <h2 className="text-2xl font-black uppercase tracking-tight text-orange-600">
-                DAILY NEEDS HUB
-              </h2>
-              <p className="text-[9px] font-bold text-gray-500 uppercase">Premium Retail Cash Memo</p>
-              <p className="text-[9px] text-gray-400 font-medium">📍 Papuri, Nanoor, Birbhum, WB, 731240</p>
-              <div className="text-[9px] font-bold text-gray-600 flex justify-center gap-4 pt-1">
-                <span>📞 +91 8637589429</span>
-                <span>✉️ dailyneedshub@gmail.com</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 p-3 rounded-xl border border-gray-100">
-              <div>
-                <p className="text-gray-400 uppercase font-black text-[8px]">Invoice Framework</p>
-                <p className="font-bold text-gray-800 truncate">ID: {currentOrderId}</p>
-                <p className="text-gray-500 font-medium">{new Date().toLocaleString()}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-gray-400 uppercase font-black text-[8px]">Shipping Target</p>
-                <p className="font-extrabold text-orange-600 truncate">{custInfo.name}</p>
-                <p className="text-gray-500 truncate font-semibold">{custInfo.vill}, {custInfo.city} (PIN-{custInfo.pin})</p>
-              </div>
-            </div>
-
-            {paymentType === "UPI" ? (
-              <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
-                <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ FLIPKART STYLE ONE-CLICK INTENT GATEWAY</span>
-                <p className="text-[10px] text-gray-600 font-bold leading-tight">Click the link below to initialize Google Pay / PhonePe securely. Order completes once redirected!</p>
-                
-                <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(getUPIIntentLink())}`} 
-                    alt="Universal UPI Pay Link" 
-                    className="w-32 h-32 mx-auto object-contain" 
-                  />
-                </div>
-
-                <a 
-                  href={getUPIIntentLink()}
-                  className="block bg-gradient-to-r from-orange-600 to-red-500 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center uppercase tracking-wide"
-                >
-                  🚀 Click to Open PhonePe / GPay
-                </a>
-              </div>
-            ) : (
-              <div className="p-4 bg-emerald-50/80 border-2 border-dashed border-emerald-300 rounded-2xl text-center space-y-2 shadow-inner">
-                <span className="text-[9px] bg-emerald-600 text-white px-3 py-0.5 rounded-full font-black uppercase tracking-wider">💵 CASH ON DELIVERY MODE</span>
-                <p className="text-xs font-black text-emerald-900 pt-1">No advance payment required!</p>
-                <p className="text-[11px] text-emerald-700 font-medium px-2">Please handover cash equivalent balance or execute mobile UPI transfers directly to the shipping carrier asset once products arrive safely.</p>
+            {/* 6. Quantity Selector */}
+            <div className="flex items-center justify-between border-t border-b py-3">
+              <span className="text-xs font-black text-gray-700 uppercase tracking-wider">Select Quantity:</span>
+              <div className="flex items-center gap-3 bg-gray-100 p-1.5 rounded-xl border">
                 <button 
-                  onClick={confirmCODModeSelection} 
-                  className="mt-1 bg-white text-emerald-700 font-bold border border-emerald-300 px-3 py-1 text-[10px] rounded-lg shadow-sm hover:bg-emerald-50"
+                  onClick={() => setProductPageQty(prev => Math.max(1, prev - 1))}
+                  className="w-8 h-8 bg-white text-gray-800 font-black text-base rounded-lg border shadow-sm flex items-center justify-center active:scale-95"
                 >
-                  Confirm COD Selection Matrix
+                  -
+                </button>
+                <span className="font-black text-sm w-6 text-center">{productPageQty}</span>
+                <button 
+                  onClick={() => setProductPageQty(prev => Math.min(selectedProduct.stock, prev + 1))}
+                  className="w-8 h-8 bg-white text-gray-800 font-black text-base rounded-lg border shadow-sm flex items-center justify-center active:scale-95"
+                >
+                  +
                 </button>
               </div>
-            )}
-
-            <div className="space-y-1.5 border-t pt-3 max-h-[15vh] overflow-y-auto pr-1">
-              {cart.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center text-[11px] text-gray-700">
-                  <span className="font-bold">{item.name} {item.selectedSize ? `(Size: ${item.selectedSize})` : ''} <b className="text-gray-400 font-medium">x{item.qty}</b></span>
-                  <span className="font-extrabold text-gray-900">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</span>
-                </div>
-              ))}
             </div>
 
-            <div className="flex justify-between items-center border-t-2 border-dashed border-gray-200 pt-3 text-sm font-black text-emerald-600 uppercase">
-              <span>Gross Total Amount Due:</span>
-              <span className="text-base font-black">₹{cartTotal}</span>
-            </div>
-
-            <div className="border-t pt-3 flex flex-col items-end">
-              <div className="text-center space-y-0.5 pr-2">
-                <p className="font-serif italic text-sm font-bold text-indigo-700 tracking-wide selection:bg-none">
-                  Younus Abedin
+            {/* 7. Flipkart-Style Delivery Pincode Checker */}
+            <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-2">
+              <span className="text-xs font-black text-gray-700 uppercase tracking-wider block">🚚 Check Express Delivery Availability</span>
+              <div className="flex gap-2">
+                <input 
+                  type="number" 
+                  placeholder="Enter 6-Digit PIN Code" 
+                  value={pinCheckInput}
+                  onChange={(e) => handlePinCheck(e.target.value)}
+                  className="flex-1 p-2.5 border rounded-xl bg-gray-50 text-xs font-bold text-black focus:outline-none"
+                />
+                <button onClick={() => handlePinCheck(pinCheckInput)} className="bg-slate-800 text-white text-xs font-black px-4 rounded-xl shadow">
+                  Check
+                </button>
+              </div>
+              {pinCheckMsg && (
+                <p className={`text-xs font-black pt-1 ${pinCheckMsg.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {pinCheckMsg.text}
                 </p>
-                <div className="w-24 h-[1px] bg-gray-300 mx-auto"></div>
-                <p className="text-[8px] font-black uppercase tracking-wider text-gray-400">Sales Manager Signature</p>
+              )}
+            </div>
+
+            {/* 8. Full Product Description & Specifications */}
+            <div className="space-y-2 border-t pt-3">
+              <h3 className="text-xs font-black text-gray-700 uppercase tracking-wider">📝 Product Details & Specifications</h3>
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 text-xs text-gray-700 font-medium leading-relaxed whitespace-pre-line">
+                {selectedProduct.specifications || "Premium high quality checked grocery asset. 100% fresh and verified quality guaranteed."}
               </div>
             </div>
 
+          </div>
+
+          {/* Flipkart-Style Fixed Sticky Bottom Action Bar */}
+          <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-gray-200 p-3 z-50 flex gap-3 shadow-2xl max-w-3xl mx-auto">
             <button 
-              onClick={sendWhatsAppNotification} 
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3.5 rounded-2xl font-black shadow-md text-xs text-center uppercase tracking-wider transition-all"
+              onClick={() => { 
+                addToCart(selectedProduct, productPageQty); 
+                alert(`Added ${productPageQty} unit(s) to bag!`);
+              }}
+              className="flex-1 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-black rounded-2xl text-xs md:text-sm border border-gray-300 shadow-sm uppercase tracking-wider active:scale-95 transition-all"
             >
-              ✅ Send Bill & Verification to WhatsApp
+              🛒 Add To Cart
+            </button>
+            <button 
+              onClick={() => { 
+                addToCart(selectedProduct, productPageQty); 
+                if(!selectedProduct.availableSizes || selectedProduct.availableSizes.length === 0 || selectedSizes[selectedProduct.id]) {
+                  setSelectedProduct(null); 
+                  setIsCartOpen(true); 
+                }
+              }}
+              className="flex-1 py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black rounded-2xl text-xs md:text-sm shadow-lg uppercase tracking-wider active:scale-95 transition-all"
+            >
+              ⚡ Buy Now (₹{getDiscountedPrice(selectedProduct.price, selectedProduct.discount) * productPageQty})
             </button>
           </div>
-        </div>
-      )}
 
-      {/* Dynamic Legal Content Modals */}
-      {legalModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-black border shadow-2xl">
-            <div className="flex justify-between items-center border-b pb-2">
-              <h3 className="font-black text-sm text-orange-600">{legalModal.title}</h3>
-              <button onClick={() => setLegalModal({ isOpen: false, title: '', content: '' })} className="text-xs bg-gray-100 px-2.5 py-1 rounded-lg font-bold hover:bg-gray-200">Close X</button>
-            </div>
-            <p className="text-xs text-gray-700 leading-relaxed font-semibold whitespace-pre-line bg-gray-50 p-4 rounded-2xl border border-gray-100 max-h-[50vh] overflow-y-auto">
-              {legalModal.content}
-            </p>
-          </div>
         </div>
       )}
 

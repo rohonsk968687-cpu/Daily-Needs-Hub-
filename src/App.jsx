@@ -106,10 +106,10 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [user, setUser] = useState(null);
   
-  // App Loader State for Skeleton rendering mapping hook
+  // Feature 19: Enhanced Shimmer Skeleton Loaders State
   const [isProductsLoading, setIsProductsLoading] = useState(true);
   
-  // Isolated Navigation Rules & Security Matrix States
+  // Isolated Navigation Rules & Security Matrix States (Feature 1, 2)
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminUrl, setIsAdminUrl] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
@@ -130,6 +130,19 @@ export default function App() {
   const [legalModal, setLegalModal] = useState({ isOpen: false, title: '', content: '' });
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [flashTime, setFlashTime] = useState(3600); 
+
+  // Feature 16: Modern Toast Notifications System
+  const [toast, setToast] = useState(null);
+
+  // Feature 8: Recently Viewed Items List
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
+
+  // Feature 5, 6: Voice Search & Search Suggestions State
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+
+  // Feature 20: Image Pinch-Zoom Modal State
+  const [isZoomOpen, setIsNotifZoomOpen] = useState(false);
 
   // Client-side transient variant selection hook
   const [selectedSizes, setSelectedSizes] = useState({});
@@ -173,6 +186,12 @@ export default function App() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
 
+  // Custom Toast Notification Trigger
+  const showToastMessage = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   // Verification routing path allocation hooks
   useEffect(() => {
     if (window.location.pathname === "/admin" || window.location.hash === "#admin") {
@@ -180,9 +199,15 @@ export default function App() {
     } else {
       setIsAdminUrl(false);
     }
+
+    // Load Recently Viewed from local storage
+    const savedRV = localStorage.getItem("dnh_recently_viewed");
+    if (savedRV) {
+      try { setRecentlyViewed(JSON.parse(savedRV)); } catch(e){}
+    }
   }, []);
 
-  // Load cloud data structure metrics for profiles and carts (Persistent Address Auto-Sync)
+  // Load cloud data structure metrics for profiles, carts & Wishlist Cloud Sync (Feature 11)
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
@@ -193,6 +218,11 @@ export default function App() {
         const profileDoc = await getDoc(doc(db, "profiles", user.uid));
         if (profileDoc.exists()) {
           setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
+        }
+        // Wishlist Cloud Sync (Feature 11)
+        const wishDoc = await getDoc(doc(db, "wishlists", user.uid));
+        if (wishDoc.exists()) {
+          setWishlist(wishDoc.data().items || []);
         }
       };
       loadUserCloudData();
@@ -214,6 +244,14 @@ export default function App() {
       await setDoc(doc(db, "carts", user.uid), { items: updatedCart }, { merge: true });
     } else {
       localStorage.setItem("dnh_guest_cart", JSON.stringify(updatedCart));
+    }
+  };
+
+  // Feature 11: Sync Wishlist with Cloud
+  const syncWishlistCloud = async (updatedWish) => {
+    setWishlist(updatedWish);
+    if (user && !user.isAnonymous) {
+      await setDoc(doc(db, "wishlists", user.uid), { items: updatedWish }, { merge: true });
     }
   };
 
@@ -283,9 +321,10 @@ export default function App() {
         } else {
           setCustInfo(prev => ({ ...prev, name: result.user.displayName || '' }));
         }
+        showToastMessage("Logged in as " + result.user.displayName);
       }
     } catch (error) {
-      alert("Login Error: " + error.message);
+      showToastMessage("Login Error: " + error.message, "error");
     }
   };
 
@@ -295,28 +334,28 @@ export default function App() {
     setCart([]);
     localStorage.removeItem("dnh_guest_cart");
     setCustInfo({ name: '', gender: 'Male', phone: '', vill: '', landmark: '', city: 'Nanoor', pin: '' });
-    alert("Logged out successfully!");
+    showToastMessage("Logged out successfully!");
   };
 
   const saveProfileDataToCloud = async () => {
-    if (!custInfo.name || !custInfo.phone) return alert("Profile full name and phone number fields are mandatory!");
+    if (!custInfo.name || !custInfo.phone) return showToastMessage("Name and phone number mandatory!", "error");
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
-    alert("Profile parameters updated and saved permanently!");
+    showToastMessage("Profile parameters updated and saved permanently!");
   };
 
   const saveAddressToLocal = async () => {
-    if (!custInfo.vill || !custInfo.pin || !custInfo.city) return alert("Village, City, and PIN Code are mandatory elements!");
+    if (!custInfo.vill || !custInfo.pin || !custInfo.city) return showToastMessage("Village, City, and PIN Code are mandatory!", "error");
     if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return alert(`Delivery unavailable for area PIN: ${custInfo.pin}. Please use verified Bolpur or Nanoor block regions.`);
+      return showToastMessage(`Delivery unavailable for area PIN: ${custInfo.pin}`, "error");
     }
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("dnh_saved_address", JSON.stringify(custInfo));
-    alert("Shipping delivery address profiles verified and locked!");
+    showToastMessage("Shipping delivery address verified & locked!");
   };
 
   const getDiscountedPrice = (price, discount) => {
@@ -325,10 +364,10 @@ export default function App() {
   };
 
   const addToCart = (p, quantity = 1) => {
-    if (p.stock <= 0) return alert("Requested product payload is currently out of stock!");
+    if (p.stock <= 0) return showToastMessage("Requested product is out of stock!", "error");
 
     if ((p.category === "Shoes & Footwear" || p.category === "Fashion & Clothing") && !selectedSizes[p.id] && p.availableSizes && p.availableSizes.length > 0) {
-      return alert("Kripya is item ka size select karein tabhi item bag me add hoga!");
+      return showToastMessage("Please select item size first!", "error");
     }
 
     const chosenSize = selectedSizes[p.id] || null;
@@ -336,12 +375,13 @@ export default function App() {
     let updatedCart = [];
 
     if (exist) {
-      if (exist.qty + quantity > p.stock) return alert("Inventory limit reached for this specific item!");
+      if (exist.qty + quantity > p.stock) return showToastMessage("Inventory limit reached!", "error");
       updatedCart = cart.map(x => (x.id === p.id && x.selectedSize === chosenSize) ? { ...exist, qty: exist.qty + quantity } : x);
     } else {
       updatedCart = [...cart, { ...p, qty: quantity, selectedSize: chosenSize }];
     }
     syncCart(updatedCart);
+    showToastMessage(`Added ${quantity} unit(s) to bag! 🛒`);
   };
 
   const updateCartQty = (id, delta, sizeVariant) => {
@@ -352,18 +392,106 @@ export default function App() {
     if (nextQty <= 0) {
       updatedCart = cart.filter(x => !(x.id === id && x.selectedSize === sizeVariant));
     } else {
-      if (delta > 0 && nextQty > item.stock) return alert("Maximum inventory parameters exceeded!");
+      if (delta > 0 && nextQty > item.stock) return showToastMessage("Maximum inventory limit reached!", "error");
       updatedCart = cart.map(x => (x.id === id && x.selectedSize === sizeVariant) ? { ...item, qty: nextQty } : x);
     }
     syncCart(updatedCart);
   };
 
+  // Feature 11: Wishlist Toggle with Cloud Sync
   const toggleWishlist = (p) => {
     const exist = wishlist.find(x => x.id === p.id);
+    let updatedWish = [];
     if (exist) {
-      setWishlist(wishlist.filter(x => x.id !== p.id));
+      updatedWish = wishlist.filter(x => x.id !== p.id);
+      showToastMessage("Removed from favorites");
     } else {
-      setWishlist([...wishlist, p]);
+      updatedWish = [...wishlist, p];
+      showToastMessage("Added to favorites ❤️");
+    }
+    syncWishlistCloud(updatedWish);
+  };
+
+  // Feature 8: Add to Recently Viewed List
+  const addToRecentlyViewed = (p) => {
+    setSelectedProduct(p);
+    setCurrentProductSlide(0);
+    setProductPageQty(1);
+    setPinCheckMsg(null);
+
+    const exists = recentlyViewed.find(x => x.id === p.id);
+    let updatedRV = [];
+    if (!exists) {
+      updatedRV = [p, ...recentlyViewed.slice(0, 5)];
+      setRecentlyViewed(updatedRV);
+      localStorage.setItem("dnh_recently_viewed", JSON.stringify(updatedRV));
+    }
+  };
+
+  // Feature 6: Voice Search Functionality
+  const startVoiceSearch = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      return showToastMessage("Voice search not supported on this browser", "error");
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-IN';
+    recognition.onstart = () => {
+      setIsListening(true);
+      showToastMessage("Listening... Speak product name 🎙️");
+    };
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setSearch(transcript);
+      setIsListening(false);
+      showToastMessage(`Searching for: "${transcript}"`);
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      showToastMessage("Voice recognition error", "error");
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+  };
+
+  // Feature 10: One-Click Product Social Share
+  const handleShareProduct = (p, platform) => {
+    const shareText = `Check out ${p.name} at ₹${getDiscountedPrice(p.price, p.discount)} on Daily Needs Hub!`;
+    const shareUrl = window.location.href;
+
+    if (platform === 'whatsapp') {
+      window.open(`https://wa.me/?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`, '_blank');
+    } else if (platform === 'facebook') {
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
+    } else if (platform === 'telegram') {
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`, '_blank');
+    } else if (platform === 'copy') {
+      navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
+      showToastMessage("Link copied to clipboard! 📋");
+    }
+  };
+
+  // Feature 12: Order Cancel Request
+  const handleCancelOrder = async (orderId) => {
+    if (window.confirm("Are you sure you want to cancel this pending order?")) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), { status: "Cancelled ❌" });
+        showToastMessage("Order cancelled successfully!");
+      } catch (err) {
+        showToastMessage("Failed to cancel order", "error");
+      }
+    }
+  };
+
+  // Feature 13: Order Return / Exchange Request
+  const handleReturnOrder = async (orderId) => {
+    if (window.confirm("Raise Return/Exchange request for this delivered order?")) {
+      try {
+        await updateDoc(doc(db, "orders", orderId), { status: "Return Requested 🔄" });
+        showToastMessage("Return Request submitted! Manager will contact you shortly.");
+      } catch (err) {
+        showToastMessage("Failed to submit request", "error");
+      }
     }
   };
 
@@ -401,13 +529,12 @@ export default function App() {
       });
       e.target.reset();
       setAdminSelectedCategory(categories[1]);
-      alert("Product batch deployed successfully with multi-images!");
+      showToastMessage("Product batch deployed successfully!");
     } catch (error) {
-      alert("Database engine write failure!");
+      showToastMessage("Database write failure!", "error");
     }
   };
 
-  // Full Product Edit Handler for Admin Modal
   const handleSaveFullProductEdit = async (e) => {
     e.preventDefault();
     if (!editingProduct) return;
@@ -434,9 +561,9 @@ export default function App() {
         images: imgArray
       });
       setEditingProduct(null);
-      alert("Product updated successfully in cloud database!");
+      showToastMessage("Product updated successfully!");
     } catch (err) {
-      alert("Error updating product details!");
+      showToastMessage("Error updating product!", "error");
     }
   };
 
@@ -450,8 +577,8 @@ export default function App() {
         createdAt: new Date().toLocaleTimeString()
       });
       e.target.reset();
-      alert("Broadcast alert synchronization completed!");
-    } catch(err) { alert("Notification push matrix error."); }
+      showToastMessage("Broadcast alert sent!");
+    } catch(err) { showToastMessage("Notification push error", "error"); }
   };
 
   const updateProductData = async (id, field, value) => {
@@ -464,12 +591,12 @@ export default function App() {
 
   const updateOrderStatus = async (id, nextStatus) => {
     await updateDoc(doc(db, "orders", id), { status: nextStatus });
-    alert("Pipeline milestone status updated successfully!");
+    showToastMessage("Pipeline status updated!");
   };
 
   const updateOrderPaymentStatus = async (id, nextPayStatus) => {
     await updateDoc(doc(db, "orders", id), { paymentStatus: nextPayStatus });
-    alert("Payment parameters verified and recorded permanently!");
+    showToastMessage("Payment parameters verified!");
   };
 
   const getSalesAnalytics = () => {
@@ -511,7 +638,6 @@ export default function App() {
     }
   });
 
-  // Admin Stock Grid Filtered Products List
   const adminFilteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(adminSearchQuery.toLowerCase());
     const matchesCategory = adminCategoryFilter === "All" || p.category === adminCategoryFilter;
@@ -529,14 +655,14 @@ export default function App() {
 
   const handleCheckoutInit = async () => {
     if (!checkOperationalHours()) {
-      return alert("Store Closed! Daily Needs Hub accepting orders strictly between 7:00 AM and 9:00 PM. Please visit us tomorrow morning!");
+      return showToastMessage("Store Closed! Accepting orders strictly 7:00 AM - 9:00 PM.", "error");
     }
 
     if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone || !custInfo.city) {
-      return alert("Name, Phone, Village, City and PIN Code are mandatory fields. Please update configurations inside profile cards.");
+      return showToastMessage("Name, Phone, Village, City and PIN Code are mandatory fields.", "error");
     }
     if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return alert(`Service unreachable for PIN: ${custInfo.pin}. Please use alternative Bolpur or Nanoor regional address.`);
+      return showToastMessage(`Service unreachable for PIN: ${custInfo.pin}`, "error");
     }
 
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
@@ -562,7 +688,7 @@ export default function App() {
       }
 
       if (outOfStockFlag) {
-        return alert(`Transaction aborted: ${blockedItemName} has insufficient stock thresholds remaining.`);
+        return showToastMessage(`Transaction aborted: ${blockedItemName} has insufficient stock.`, "error");
       }
 
       await batch.commit();
@@ -585,7 +711,7 @@ export default function App() {
       setCurrentOrderId(docRef.id);
       setShowInvoice(true); 
     } catch (e) {
-      alert("Checkout sequence verification matrix failure.");
+      showToastMessage("Checkout sequence verification failure.", "error");
     }
   };
 
@@ -596,9 +722,9 @@ export default function App() {
         paymentStatus: "COD Pending Delivery",
         utr: "COD Mode Verification Complete"
       });
-      alert("Cash on Delivery parameters accepted successfully!");
+      showToastMessage("Cash on Delivery parameters accepted!");
     } catch(err) {
-      console.log("Database update node malfunction");
+      console.log("Database update error");
     }
   };
 
@@ -693,6 +819,14 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gradient-to-tr from-amber-50/60 via-white to-emerald-50/60 text-gray-900'} pb-32 transition-all duration-500 font-sans`}>
       
+      {/* FEATURE 16: Modern Toast Notifications System */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-2xl font-black text-xs flex items-center gap-2 animate-bounce ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'}`}>
+          <span>{toast.type === 'error' ? '⚠️' : '✅'}</span>
+          <span>{toast.msg}</span>
+        </div>
+      )}
+
       {/* DESKTOP & MOBILE RESPONSIVE CONTAINER WRAPPER */}
       <div className="w-full max-w-7xl mx-auto">
         
@@ -727,14 +861,42 @@ export default function App() {
           </div>
         </header>
 
-        {/* Sticky Custom Search Bar on Top */}
+        {/* Sticky Custom Search Bar + Voice Search (Feature 5, 6) */}
         {!isAdmin && !isAdminUrl && activeTab === "shop" && (
-          <div className="sticky top-[69px] z-30 px-4 py-2 bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-100 w-full max-w-md md:max-w-7xl mx-auto my-2 rounded-2xl">
-            <input 
-              type="text" placeholder="🔍 Search milk, snacks, shoes, t-shirts, saree, grocery..." 
-              className="w-full p-3.5 bg-white rounded-2xl border-2 border-orange-100 text-xs md:text-sm focus:border-emerald-500 focus:outline-none transition-all text-black font-semibold shadow-inner"
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="sticky top-[69px] z-30 px-4 py-2 bg-white/90 backdrop-blur-sm shadow-sm border-b border-gray-100 w-full max-w-md md:max-w-7xl mx-auto my-2 rounded-2xl relative">
+            <div className="flex items-center gap-2">
+              <input 
+                type="text" placeholder="🔍 Search milk, snacks, shoes, t-shirts, grocery..." 
+                value={search}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                className="w-full p-3.5 bg-white rounded-2xl border-2 border-orange-100 text-xs md:text-sm focus:border-emerald-500 focus:outline-none transition-all text-black font-semibold shadow-inner"
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <button 
+                onClick={startVoiceSearch} 
+                className={`p-3 rounded-2xl border shadow-sm transition-all text-sm ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-orange-100 text-orange-600 hover:bg-orange-200'}`}
+                title="Voice Search 🎤"
+              >
+                🎙️
+              </button>
+            </div>
+
+            {/* Feature 5: Smart Search Dropdown Suggestions */}
+            {showSuggestions && search.length > 0 && (
+              <div className="absolute top-full left-4 right-4 bg-white border border-gray-100 rounded-2xl shadow-xl z-40 max-h-48 overflow-y-auto mt-1 p-2 text-xs font-bold text-gray-800">
+                {products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 5).map(p => (
+                  <div 
+                    key={p.id} 
+                    onClick={() => { setSearch(p.name); setShowSuggestions(false); }}
+                    className="p-2.5 hover:bg-orange-50 rounded-xl cursor-pointer flex items-center justify-between"
+                  >
+                    <span>{p.name}</span>
+                    <span className="text-[10px] text-orange-500 font-mono">₹{getDiscountedPrice(p.price, p.discount)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -857,7 +1019,6 @@ export default function App() {
                           <div className="bg-gray-50 p-3 rounded-2xl border space-y-2">
                             <label className="text-[9px] font-black text-gray-500 uppercase tracking-wider block border-b pb-1">Available Sizes Checklist:</label>
                             
-                            {/* Footwear Adult Sizes (1 to 10) */}
                             <div>
                               <span className="text-[8px] font-black text-emerald-600 uppercase block mb-1">👞 Adult Footwear (UK 1 - 10):</span>
                               <div className="flex flex-wrap gap-1.5 text-[9px] font-bold text-gray-700">
@@ -870,7 +1031,6 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* Footwear Kids Sizes (1 to 13) */}
                             <div>
                               <span className="text-[8px] font-black text-indigo-600 uppercase block mb-1">👶 Kids Footwear (Kids 1 - 13):</span>
                               <div className="flex flex-wrap gap-1.5 text-[9px] font-bold text-gray-700">
@@ -883,7 +1043,6 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* Apparel Sizes */}
                             <div>
                               <span className="text-[8px] font-black text-orange-600 uppercase block mb-1">👕 Fashion & Clothing:</span>
                               <div className="flex flex-wrap gap-1.5 text-[9px] font-bold text-gray-700">
@@ -915,12 +1074,11 @@ export default function App() {
                         </form>
                       )}
 
-                      {/* UPGRADED STOCK CONTROLLER GRID WITH SEARCH, CATEGORY FILTER & FULL EDIT MODAL (Admin Tab 3) */}
+                      {/* Stock Controller Grid (Admin Tab 3) */}
                       {adminTab === "manage-items" && (
                         <div className="bg-white rounded-3xl space-y-4 text-black p-2">
                           <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider border-b pb-2">📋 Stock Controller Grid Metadata</h3>
                           
-                          {/* Search & Category Filter Control Bar */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-2xl border">
                             <input 
                               type="text" 
@@ -938,7 +1096,6 @@ export default function App() {
                             </select>
                           </div>
 
-                          {/* Product Grid Items Stream */}
                           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                             {adminFilteredProducts.length === 0 ? (
                               <p className="text-center text-xs font-bold text-gray-400 py-8">No matching items found in inventory.</p>
@@ -1337,7 +1494,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* CARD SECTION 3: My Orders */}
+                  {/* CARD SECTION 3: My Orders with Cancel & Return Features (Feature 12, 13) */}
                   <div className="space-y-3">
                     <h3 className="font-black text-xs text-gray-400 uppercase tracking-wider flex items-center gap-1.5">📦 My Orders History & Live Tracking</h3>
                     <div className="space-y-3 max-h-[45vh] overflow-y-auto no-scrollbar pr-0.5">
@@ -1371,10 +1528,24 @@ export default function App() {
                                 <p key={idx}>• {it.name} {it.size ? `(Size: ${it.size})` : ''} <span className="text-gray-400 font-mono">(x{it.qty})</span></p>
                               ))}
                             </div>
-                            <div className="flex justify-between items-center text-[10px] font-bold text-gray-500">
+                            
+                            {/* Feature 12 & 13: Cancel & Return Order Action Buttons */}
+                            <div className="flex justify-between items-center text-[10px] font-bold pt-1">
                               <p className="text-emerald-700">Payment: {o.paymentMode || "Online UPI payment"}</p>
-                              {o.paymentStatus && <p className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[9px]">{o.paymentStatus}</p>}
+                              
+                              {o.status.includes("Pending") && (
+                                <button onClick={() => handleCancelOrder(o.id)} className="bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-xl font-black">
+                                  Cancel Order ❌
+                                </button>
+                              )}
+
+                              {o.status.includes("Delivered") && (
+                                <button onClick={() => handleReturnOrder(o.id)} className="bg-blue-50 text-blue-600 border border-blue-200 px-2.5 py-1 rounded-xl font-black">
+                                  Return / Exchange 🔄
+                                </button>
+                              )}
                             </div>
+
                             <div className="flex justify-between items-center font-black pt-1 border-t border-dashed">
                               <span className="text-gray-400 text-[10px]">Date: {o.createdAt?.split(',')[0]}</span>
                               <span className="text-orange-600 text-sm">Total: ₹{o.totalAmount}</span>
@@ -1474,13 +1645,13 @@ export default function App() {
                                {isWish ? "❤️" : "🤍"}
                              </button>
 
-                             <div onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); setProductPageQty(1); setPinCheckMsg(null); }} className="h-36 md:h-44 flex items-center justify-center mb-2 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden cursor-pointer">
+                             <div onClick={() => addToRecentlyViewed(p)} className="h-36 md:h-44 flex items-center justify-center mb-2 bg-gradient-to-b from-orange-50/50 via-white to-emerald-50/30 rounded-2xl overflow-hidden cursor-pointer">
                                {pImages[0].includes('http') ? <img src={pImages[0]} alt="product" className="h-full w-full object-cover rounded-2xl hover:scale-105 transition-transform duration-500" /> : <span className="text-5xl">{pImages[0]}</span>}
                              </div>
 
                              <div className="px-1 text-center flex-1 flex flex-col justify-between">
                                <div>
-                                 <h3 onClick={() => { setSelectedProduct(p); setCurrentProductSlide(0); setProductPageQty(1); setPinCheckMsg(null); }} className="font-extrabold text-gray-800 text-xs md:text-sm truncate cursor-pointer underline">{p.name}</h3>
+                                 <h3 onClick={() => addToRecentlyViewed(p)} className="font-extrabold text-gray-800 text-xs md:text-sm truncate cursor-pointer underline">{p.name}</h3>
                                    
                                  {/* Dynamic Sizing Selector */}
                                  {(p.availableSizes && p.availableSizes.length > 0) && (
@@ -1521,6 +1692,24 @@ export default function App() {
                         );
                       })}
                     </main>
+                  )}
+
+                  {/* Feature 8: Recently Viewed Items Horizontal Bar */}
+                  {recentlyViewed.length > 0 && (
+                    <div className="mx-4 my-6 p-4 bg-white rounded-3xl border border-orange-100 shadow-sm space-y-3">
+                      <h4 className="text-xs font-black text-gray-700 uppercase tracking-wider flex items-center gap-1">👁️ Recently Viewed Items</h4>
+                      <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
+                        {recentlyViewed.map(rv => (
+                          <div key={rv.id} onClick={() => addToRecentlyViewed(rv)} className="w-24 shrink-0 bg-gray-50 p-2 rounded-2xl border text-center cursor-pointer">
+                            <div className="h-16 w-full flex items-center justify-center overflow-hidden rounded-xl bg-white mb-1">
+                              <img src={rv.images?.[0] || rv.img} alt="rv" className="h-full w-full object-cover" />
+                            </div>
+                            <p className="text-[10px] font-bold truncate text-gray-800">{rv.name}</p>
+                            <p className="text-[10px] font-black text-orange-600">₹{getDiscountedPrice(rv.price, rv.discount)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </>
               )}
@@ -1625,7 +1814,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Cart Drawer System */}
+      {/* Feature 18: Smart Cart Drawer with Empty State Graphic */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-[2rem] text-black flex flex-col justify-between">
@@ -1660,10 +1849,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Advanced Cart Quantity Controls */}
+              {/* Advanced Cart Quantity Controls & Empty State */}
               <div className="space-y-3 max-h-[35vh] overflow-y-auto pr-1">
                 {cart.length === 0 ? (
-                  <p className="text-xs text-center text-gray-400 font-bold py-10">Your cart drawer is completely empty.</p>
+                  <div className="text-center py-10 space-y-3">
+                    <span className="text-5xl block">🛒</span>
+                    <p className="text-xs text-gray-400 font-black">Your cart drawer is completely empty.</p>
+                    <button onClick={() => { setIsCartOpen(false); setActiveTab("shop"); }} className="bg-orange-500 text-white text-xs font-black px-4 py-2 rounded-xl shadow">Start Shopping</button>
+                  </div>
                 ) : (
                   cart.map((item, index) => (
                     <div key={index} className="flex justify-between items-center py-2.5 border-b text-xs">
@@ -1693,7 +1886,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FLIPKART-STYLE FULL SCREEN PRODUCT DETAILS PAGE OVERLAY */}
+      {/* FLIPKART-STYLE FULL SCREEN PRODUCT DETAILS PAGE OVERLAY (Feature 4, 9, 10, 20) */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-black flex flex-col justify-between animate-fadeIn">
           
@@ -1718,21 +1911,20 @@ export default function App() {
           {/* Product Page Scrollable Body */}
           <div className="max-w-3xl mx-auto w-full p-4 space-y-6 pb-28">
             
-            {/* 1. Large Swipable Product Image Showcase */}
+            {/* Feature 20: Large Product Image with Pinch Zoom Trigger */}
             <div className="relative w-full h-80 md:h-96 bg-gradient-to-b from-orange-50/30 to-gray-50 rounded-3xl overflow-hidden border flex items-center justify-center shadow-inner">
               <img 
                 src={(selectedProduct.images || [selectedProduct.img || "📦"])[currentProductSlide]} 
                 alt="Product View" 
-                className="w-full h-full object-contain p-4 transition-all duration-300"
+                onClick={() => setIsNotifZoomOpen(true)}
+                className="w-full h-full object-contain p-4 transition-all duration-300 cursor-zoom-in"
               />
               
-              {/* Carousel Next/Prev Controls */}
               {(selectedProduct.images || []).length > 1 && (
                 <>
                   <button onClick={() => setCurrentProductSlide(prev => (prev > 0 ? prev - 1 : (selectedProduct.images.length - 1)))} className="absolute left-3 bg-white/90 hover:bg-white text-black p-2 rounded-full text-sm shadow-md font-black">◀</button>
                   <button onClick={() => setCurrentProductSlide(prev => (prev < (selectedProduct.images.length - 1) ? prev + 1 : 0))} className="absolute right-3 bg-white/90 hover:bg-white text-black p-2 rounded-full text-sm shadow-md font-black">▶</button>
                   
-                  {/* Image Counter Badge */}
                   <div className="absolute bottom-3 right-3 bg-black/70 text-white text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm">
                     {currentProductSlide + 1} / {selectedProduct.images.length}
                   </div>
@@ -1740,22 +1932,18 @@ export default function App() {
               )}
             </div>
 
-            {/* 2. Image Thumbnails List */}
-            {(selectedProduct.images || []).length > 1 && (
-              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                {selectedProduct.images.map((imgUrl, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => setCurrentProductSlide(idx)}
-                    className={`w-16 h-16 rounded-xl border-2 overflow-hidden shrink-0 transition-all ${currentProductSlide === idx ? 'border-orange-500 scale-105 shadow-md' : 'border-gray-200 opacity-60'}`}
-                  >
-                    <img src={imgUrl} alt="thumb" className="w-full h-full object-cover" />
-                  </button>
-                ))}
+            {/* Feature 10: One-Click Product Social Share Links */}
+            <div className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border">
+              <span className="text-xs font-black text-gray-600 uppercase">Share Product:</span>
+              <div className="flex gap-3">
+                <button onClick={() => handleShareProduct(selectedProduct, 'whatsapp')} className="text-base bg-white p-2 rounded-xl border shadow-sm hover:scale-110 transition-transform">💬</button>
+                <button onClick={() => handleShareProduct(selectedProduct, 'facebook')} className="text-base bg-white p-2 rounded-xl border shadow-sm hover:scale-110 transition-transform">🌐</button>
+                <button onClick={() => handleShareProduct(selectedProduct, 'telegram')} className="text-base bg-white p-2 rounded-xl border shadow-sm hover:scale-110 transition-transform">✈️</button>
+                <button onClick={() => handleShareProduct(selectedProduct, 'copy')} className="text-base bg-white p-2 rounded-xl border shadow-sm hover:scale-110 transition-transform">📋</button>
               </div>
-            )}
+            </div>
 
-            {/* 3. Title & Rating & Offer Tag */}
+            {/* Title & Rating & Offer Tag (Feature 4) */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 {selectedProduct.offerTag && selectedProduct.offerTag !== "None" && (
@@ -1766,16 +1954,16 @@ export default function App() {
 
               <h1 className="text-xl md:text-2xl font-extrabold text-gray-900 leading-tight">{selectedProduct.name}</h1>
               
-              {/* Flipkart Style Rating Badge */}
+              {/* Feature 4: Flipkart Style Rating & Verified Review Badge */}
               <div className="flex items-center gap-2">
                 <span className="bg-emerald-700 text-white text-xs font-black px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
                   4.3 ★
                 </span>
-                <span className="text-xs text-gray-500 font-bold">(128 Ratings & Verified Buyer Reviews)</span>
+                <span className="text-xs text-gray-500 font-bold">(128 Verified Buyer Reviews)</span>
               </div>
             </div>
 
-            {/* 4. Price & Discount Callout */}
+            {/* Price & Discount Callout */}
             <div className="p-4 bg-orange-50/50 rounded-2xl border border-orange-100 space-y-1">
               <div className="flex items-baseline gap-3">
                 <span className="text-2xl md:text-3xl font-black text-orange-600">₹{getDiscountedPrice(selectedProduct.price, selectedProduct.discount)}</span>
@@ -1789,7 +1977,7 @@ export default function App() {
               <p className="text-[10px] text-gray-500 font-semibold">Inclusive of all local taxes & delivery charges</p>
             </div>
 
-            {/* 5. Size Selection (If Footwear or Fashion) */}
+            {/* Size Selection */}
             {(selectedProduct.availableSizes && selectedProduct.availableSizes.length > 0) && (
               <div className="space-y-2 border-t pt-3">
                 <label className="text-xs font-black text-gray-700 uppercase tracking-wider block">Select Preferred Variant Size *</label>
@@ -1807,7 +1995,7 @@ export default function App() {
               </div>
             )}
 
-            {/* 6. Quantity Selector */}
+            {/* Quantity Selector */}
             <div className="flex items-center justify-between border-t border-b py-3">
               <span className="text-xs font-black text-gray-700 uppercase tracking-wider">Select Quantity:</span>
               <div className="flex items-center gap-3 bg-gray-100 p-1.5 rounded-xl border">
@@ -1827,7 +2015,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* 7. Flipkart-Style Delivery Pincode Checker */}
+            {/* Delivery Pincode Checker */}
             <div className="bg-white p-4 rounded-2xl border shadow-sm space-y-2">
               <span className="text-xs font-black text-gray-700 uppercase tracking-wider block">🚚 Check Express Delivery Availability</span>
               <div className="flex gap-2">
@@ -1849,11 +2037,27 @@ export default function App() {
               )}
             </div>
 
-            {/* 8. Full Product Description & Specifications */}
+            {/* Full Product Description & Specifications */}
             <div className="space-y-2 border-t pt-3">
               <h3 className="text-xs font-black text-gray-700 uppercase tracking-wider">📝 Product Details & Specifications</h3>
               <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 text-xs text-gray-700 font-medium leading-relaxed whitespace-pre-line">
                 {selectedProduct.specifications || "Premium high quality checked grocery asset. 100% fresh and verified quality guaranteed."}
+              </div>
+            </div>
+
+            {/* Feature 9: Similar Products Recommendation ("You May Also Like") */}
+            <div className="space-y-3 border-t pt-4">
+              <h3 className="text-xs font-black text-gray-700 uppercase tracking-wider">🌟 You May Also Like (Similar Items)</h3>
+              <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
+                {products.filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).slice(0, 5).map(sp => (
+                  <div key={sp.id} onClick={() => addToRecentlyViewed(sp)} className="w-28 shrink-0 bg-white p-2 rounded-2xl border text-center cursor-pointer shadow-sm">
+                    <div className="h-20 w-full flex items-center justify-center overflow-hidden rounded-xl bg-gray-50 mb-1">
+                      <img src={sp.images?.[0] || sp.img} alt="sp" className="h-full w-full object-cover" />
+                    </div>
+                    <p className="text-[10px] font-extrabold truncate text-gray-800">{sp.name}</p>
+                    <p className="text-[10px] font-black text-orange-600">₹{getDiscountedPrice(sp.price, sp.discount)}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1864,7 +2068,6 @@ export default function App() {
             <button 
               onClick={() => { 
                 addToCart(selectedProduct, productPageQty); 
-                alert(`Added ${productPageQty} unit(s) to bag!`);
               }}
               className="flex-1 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-black rounded-2xl text-xs md:text-sm border border-gray-300 shadow-sm uppercase tracking-wider active:scale-95 transition-all"
             >
@@ -1884,6 +2087,14 @@ export default function App() {
             </button>
           </div>
 
+        </div>
+      )}
+
+      {/* Feature 20: Image Pinch-Zoom Modal View */}
+      {isZoomOpen && selectedProduct && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+          <button onClick={() => setIsNotifZoomOpen(false)} className="absolute top-4 right-4 bg-white/20 text-white px-3 py-1 rounded-full text-xs font-black">X Close</button>
+          <img src={(selectedProduct.images || [selectedProduct.img])[currentProductSlide]} alt="Zoom" className="max-w-full max-h-full object-contain scale-110" />
         </div>
       )}
 
@@ -1951,6 +2162,104 @@ export default function App() {
                 <button type="submit" className="flex-1 py-3 bg-emerald-600 text-white font-black text-xs rounded-xl shadow">Save All Changes</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Feature 14: Printable Cash Memo Invoice Modal */}
+      {showInvoice && (
+        <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center p-3 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-4 border-double border-orange-200 text-black space-y-5 my-10">
+            
+            <div className="text-center border-b-2 border-dashed border-gray-200 pb-3 space-y-0.5">
+              <h2 className="text-2xl font-black uppercase tracking-tight text-orange-600">
+                DAILY NEEDS HUB
+              </h2>
+              <p className="text-[9px] font-bold text-gray-500 uppercase">Premium Retail Cash Memo</p>
+              <p className="text-[9px] text-gray-400 font-medium">📍 Papuri, Nanoor, Birbhum, WB, 731240</p>
+              <div className="text-[9px] font-bold text-gray-600 flex justify-center gap-4 pt-1">
+                <span>📞 +91 8637589429</span>
+                <span>✉️ dailyneedshub@gmail.com</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[10px] bg-gray-50 p-3 rounded-xl border border-gray-100">
+              <div>
+                <p className="text-gray-400 uppercase font-black text-[8px]">Invoice Framework</p>
+                <p className="font-bold text-gray-800 truncate">ID: {currentOrderId}</p>
+                <p className="text-gray-500 font-medium">{new Date().toLocaleString()}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-gray-400 uppercase font-black text-[8px]">Shipping Target</p>
+                <p className="font-extrabold text-orange-600 truncate">{custInfo.name}</p>
+                <p className="text-gray-500 truncate font-semibold">{custInfo.vill}, {custInfo.city} (PIN-{custInfo.pin})</p>
+              </div>
+            </div>
+
+            {paymentType === "UPI" ? (
+              <div className="p-4 bg-orange-50/70 border-2 border-dashed border-orange-300 rounded-2xl text-center space-y-3 shadow-inner">
+                <span className="text-[9px] bg-orange-600 text-white px-2 py-0.5 rounded-full font-black uppercase tracking-wider">⚡ FLIPKART STYLE ONE-CLICK INTENT GATEWAY</span>
+                <p className="text-[10px] text-gray-600 font-bold leading-tight">Click the link below to initialize Google Pay / PhonePe securely. Order completes once redirected!</p>
+                
+                <div className="bg-white p-2 rounded-xl inline-block border shadow-sm mx-auto">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(getUPIIntentLink())}`} 
+                    alt="Universal UPI Pay Link" 
+                    className="w-32 h-32 mx-auto object-contain" 
+                  />
+                </div>
+
+                <a 
+                  href={getUPIIntentLink()}
+                  className="block bg-gradient-to-r from-orange-600 to-red-500 text-white p-3 rounded-xl text-xs font-black shadow-md active:scale-95 transition-all text-center uppercase tracking-wide"
+                >
+                  🚀 Click to Open PhonePe / GPay
+                </a>
+              </div>
+            ) : (
+              <div className="p-4 bg-emerald-50/80 border-2 border-dashed border-emerald-300 rounded-2xl text-center space-y-2 shadow-inner">
+                <span className="text-[9px] bg-emerald-600 text-white px-3 py-0.5 rounded-full font-black uppercase tracking-wider">💵 CASH ON DELIVERY MODE</span>
+                <p className="text-xs font-black text-emerald-900 pt-1">No advance payment required!</p>
+                <p className="text-[11px] text-emerald-700 font-medium px-2">Please handover cash equivalent balance or execute mobile UPI transfers directly to the shipping carrier asset once products arrive safely.</p>
+                <button 
+                  onClick={confirmCODModeSelection} 
+                  className="mt-1 bg-white text-emerald-700 font-bold border border-emerald-300 px-3 py-1 text-[10px] rounded-lg shadow-sm hover:bg-emerald-50"
+                >
+                  Confirm COD Selection Matrix
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-1.5 border-t pt-3 max-h-[15vh] overflow-y-auto pr-1">
+              {cart.map((item, idx) => (
+                <div key={idx} className="flex justify-between items-center text-[11px] text-gray-700">
+                  <span className="font-bold">{item.name} {item.selectedSize ? `(Size: ${item.selectedSize})` : ''} <b className="text-gray-400 font-medium">x{item.qty}</b></span>
+                  <span className="font-extrabold text-gray-900">₹{getDiscountedPrice(item.price, item.discount) * item.qty}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-between items-center border-t-2 border-dashed border-gray-200 pt-3 text-sm font-black text-emerald-600 uppercase">
+              <span>Gross Total Amount Due:</span>
+              <span className="text-base font-black">₹{cartTotal}</span>
+            </div>
+
+            <div className="border-t pt-3 flex flex-col items-end">
+              <div className="text-center space-y-0.5 pr-2">
+                <p className="font-serif italic text-sm font-bold text-indigo-700 tracking-wide selection:bg-none">
+                  Younus Abedin
+                </p>
+                <div className="w-24 h-[1px] bg-gray-300 mx-auto"></div>
+                <p className="text-[8px] font-black uppercase tracking-wider text-gray-400">Sales Manager Signature</p>
+              </div>
+            </div>
+
+            <button 
+              onClick={sendWhatsAppNotification} 
+              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3.5 rounded-2xl font-black shadow-md text-xs text-center uppercase tracking-wider transition-all"
+            >
+              ✅ Send Bill & Verification to WhatsApp
+            </button>
           </div>
         </div>
       )}

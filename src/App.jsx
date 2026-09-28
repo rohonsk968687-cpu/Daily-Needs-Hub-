@@ -20,7 +20,12 @@ const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// STYLE ZONE - X Fashion & Footwear Hierarchy
+// STYLE ZONE - X Brand & Departments
+const BRAND_NAME = "STYLE ZONE - X";
+const BRAND_TAGLINE = "Define Your Style.";
+const MY_UPI_ID = "8637589429-3@ybl"; 
+const ALLOWED_PINS = ["731204", "731240", "731215", "731224", "731236", "731214", "700001", "700019"];
+
 const FASHION_DEPARTMENTS = ["All", "Men", "Women", "Kids", "Footwear"];
 
 const FASHION_COLLECTIONS_MAP = {
@@ -59,11 +64,6 @@ const APPAREL_SIZES = ["S", "M", "L", "XL", "XXL"];
 const FOOTWEAR_SIZES_ADULT = ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10", "UK 11"];
 const FOOTWEAR_SIZES_KIDS = ["Kids 1", "Kids 2", "Kids 3", "Kids 4", "Kids 5", "Kids 6", "Kids 7", "Kids 8", "Kids 9", "Kids 10"];
 
-const BRAND_NAME = "STYLE ZONE - X";
-const BRAND_TAGLINE = "Define Your Style.";
-const MY_UPI_ID = "8637589429-3@ybl"; 
-const ALLOWED_PINS = ["731204", "731240", "731215", "731224", "731236", "731214", "700001", "700019"];
-
 export default function App() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]); 
@@ -71,11 +71,15 @@ export default function App() {
   const [wishlist, setWishlist] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [dynamicCoupons, setDynamicCoupons] = useState([
+    { code: "STYLE100", discount: 100, minOrder: 999 },
+    { code: "STYLE20", discountPerc: 20, minOrder: 1499 }
+  ]);
   const [user, setUser] = useState(null);
 
   const [isProductsLoading, setIsProductsLoading] = useState(true);
 
-  // Navigation & Access Control
+  // Navigation & Control States
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminUrl, setIsAdminUrl] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
@@ -90,7 +94,7 @@ export default function App() {
   const [activeDepartment, setActiveDepartment] = useState("All");
   const [activeCollection, setActiveCollection] = useState("All");
   
-  // Advanced Filter States
+  // Advanced Filter & Sorting
   const [priceFilter, setPriceFilter] = useState("All");
   const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
@@ -102,14 +106,14 @@ export default function App() {
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [flashTime, setFlashTime] = useState(14400); 
 
-  // Micro Interactions & Polish
+  // Feedback & Micro Interactions
   const [toast, setToast] = useState(null);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [showSizeGuide, setShowSizeGuide] = useState(false);
 
-  // Variant Selections on Product View
+  // Variant States
   const [selectedSizes, setSelectedSizes] = useState({});
   const [selectedColors, setSelectedColors] = useState({});
   const [productPageQty, setProductPageQty] = useState(1);
@@ -144,7 +148,7 @@ export default function App() {
     pin: '' 
   });
 
-  // Fashion Hero Banner Sliders
+  // Hero Banners
   const [heroSlides] = useState([
     {
       id: 1,
@@ -193,7 +197,7 @@ export default function App() {
     }
   }, []);
 
-  // Firebase Persistent Cloud State
+  // Firebase Real-time Persistent Cloud Data Sync
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
@@ -287,6 +291,14 @@ export default function App() {
       setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Dynamic Coupon Subscription from Firestore
+    const qCoup = collection(db, "coupons");
+    const unsubCoup = onSnapshot(qCoup, (snapshot) => {
+      if (!snapshot.empty) {
+        setDynamicCoupons(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    });
+
     return () => { 
       clearInterval(timer); 
       clearInterval(flashTimer);
@@ -294,6 +306,7 @@ export default function App() {
       unsubOrder(); 
       unsubNotif();
       unsubRev();
+      unsubCoup();
       unsubscribeAuth(); 
     };
   }, [heroSlides.length]);
@@ -483,7 +496,6 @@ export default function App() {
     }
   };
 
-  // Submit Product Review
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!reviewComment.trim()) return showToastMessage("Please write a short review!", "error");
@@ -504,25 +516,27 @@ export default function App() {
     }
   };
 
-  // Coupon Apply Logic
   const handleApplyCoupon = (e) => {
     e.preventDefault();
     const cleanCode = couponCode.trim().toUpperCase();
-    if (cleanCode === "STYLE100") {
-      if (rawCartTotal < 999) return showToastMessage("Minimum order of ₹999 required for STYLE100!", "error");
-      setAppliedCoupon({ code: "STYLE100", discount: 100 });
-      showToastMessage("🎉 Coupon Applied! ₹100 Flat OFF");
-    } else if (cleanCode === "STYLE20") {
-      if (rawCartTotal < 1499) return showToastMessage("Minimum order of ₹1499 required for STYLE20!", "error");
-      const percDisc = Math.round(rawCartTotal * 0.20);
-      setAppliedCoupon({ code: "STYLE20", discount: percDisc });
-      showToastMessage(`🎉 Coupon Applied! 20% OFF (-₹${percDisc})`);
+    const targetCoup = dynamicCoupons.find(c => c.code === cleanCode);
+
+    if (targetCoup) {
+      if (rawCartTotal < (targetCoup.minOrder || 0)) {
+        return showToastMessage(`Min order of ₹${targetCoup.minOrder} required for ${cleanCode}!`, "error");
+      }
+      let disc = 0;
+      if (targetCoup.discount) disc = targetCoup.discount;
+      else if (targetCoup.discountPerc) disc = Math.round((rawCartTotal * targetCoup.discountPerc) / 100);
+
+      setAppliedCoupon({ code: cleanCode, discount: disc });
+      showToastMessage(`🎉 Coupon Applied! ₹${disc} OFF`);
     } else {
       showToastMessage("Invalid or expired coupon code!", "error");
     }
   };
 
-  // Add Product to Fashion Catalogue
+  // Admin New Product Addition
   const addProduct = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
@@ -569,6 +583,23 @@ export default function App() {
     }
   };
 
+  // Admin Dynamic Coupon Creation
+  const handleCreateCoupon = async (e) => {
+    e.preventDefault();
+    const el = e.target.elements;
+    try {
+      await addDoc(collection(db, "coupons"), {
+        code: el.coupCode.value.toUpperCase().trim(),
+        discount: Number(el.coupValue.value) || 0,
+        minOrder: Number(el.coupMin.value) || 0
+      });
+      el.reset();
+      showToastMessage("New Coupon deployed live!");
+    } catch(err) {
+      showToastMessage("Failed to create coupon", "error");
+    }
+  };
+
   const handleSaveFullProductEdit = async (e) => {
     e.preventDefault();
     if (!editingProduct) return;
@@ -604,7 +635,7 @@ export default function App() {
   const deliveryFee = (rawCartTotal - couponDeduction) >= 999 || rawCartTotal === 0 ? 0 : 60;
   const finalPayableTotal = Math.max(0, rawCartTotal - couponDeduction + deliveryFee);
 
-  // Search, Advanced Filter, Category and Sort Pipeline
+  // Filter & Search Engine
   const filtered = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
                           (p.brand && p.brand.toLowerCase().includes(search.toLowerCase())) ||
@@ -612,7 +643,6 @@ export default function App() {
     const matchesDepartment = activeDepartment === "All" || p.category === activeDepartment;
     const matchesCollection = activeCollection === "All" || p.subCategory === activeCollection;
 
-    // Price Filter
     const finalPrice = getDiscountedPrice(p.price, p.discount);
     let matchesPrice = true;
     if (priceFilter === "under500") matchesPrice = finalPrice < 500;
@@ -620,7 +650,6 @@ export default function App() {
     else if (priceFilter === "1000-2000") matchesPrice = finalPrice >= 1000 && finalPrice <= 2000;
     else if (priceFilter === "above2000") matchesPrice = finalPrice > 2000;
 
-    // Size Filter
     let matchesSize = true;
     if (sizeFilter !== "All") {
       matchesSize = p.availableSizes && p.availableSizes.includes(sizeFilter);
@@ -634,7 +663,7 @@ export default function App() {
     if (sortBy === "priceHigh") return priceB - priceA;
     if (sortBy === "newest") return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     if (sortBy === "discount") return (b.discount || 0) - (a.discount || 0);
-    return 0; // recommended
+    return 0;
   });
 
   const adminFilteredProducts = products.filter(p => {
@@ -750,13 +779,12 @@ export default function App() {
     return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${finalPayableTotal}&tn=${encodeURIComponent(note)}&cu=INR`;
   };
 
-  // Product Specific Reviews
   const productReviews = selectedProduct ? reviews.filter(r => r.productId === selectedProduct.id) : [];
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-stone-50/50 text-zinc-900'} pb-32 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
       
-      {/* Toast Notification Container */}
+      {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-xs flex items-center gap-2.5 animate-bounce ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-zinc-900 text-white'}`}>
           <span>{toast.type === 'error' ? '⚠️' : '⚡'}</span>
@@ -764,10 +792,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Responsive Grid Framework */}
+      {/* Main Responsive Container */}
       <div className="w-full max-w-7xl mx-auto">
         
-        {/* Style Zone - X Header Navigation */}
+        {/* Navigation Bar */}
         <header className="p-3.5 bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full max-w-md md:max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4 cursor-pointer" onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); setActiveCollection("All"); }}>
             <div className="w-9 h-9 bg-zinc-950 text-white rounded-xl flex items-center justify-center font-black tracking-tighter text-lg shadow-sm">
@@ -781,7 +809,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Desktop Direct Links */}
           <nav className="hidden md:flex items-center gap-6 text-xs font-black uppercase tracking-wider text-zinc-600">
             {FASHION_DEPARTMENTS.map(dept => (
               <span 
@@ -814,7 +841,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* Fashion Search & Voice Search Bar */}
+        {/* Fashion Search & Voice Search */}
         {!isAdmin && !isAdminUrl && activeTab === "shop" && (
           <div className="sticky top-[68px] z-30 px-4 py-2.5 bg-white/90 backdrop-blur-sm border-b border-zinc-100 w-full max-w-md md:max-w-7xl mx-auto my-1 relative">
             <div className="flex items-center gap-2">
@@ -835,7 +862,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* Smart Suggestions Dropdown */}
             {showSuggestions && search.length > 0 && (
               <div className="absolute top-full left-4 right-4 bg-white border border-zinc-200 rounded-2xl shadow-2xl z-40 max-h-52 overflow-y-auto mt-1 p-2 text-xs font-bold">
                 {products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 6).map(p => (
@@ -896,6 +922,17 @@ export default function App() {
                               <p className="text-base font-black text-yellow-400 mt-1">{products.length}</p>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Coupon Deployment Section for Admin */}
+                        <div className="p-4 bg-zinc-50 rounded-2xl border space-y-2">
+                          <h4 className="text-xs font-black uppercase tracking-wider">🏷️ Deploy New Promo Coupon</h4>
+                          <form onSubmit={handleCreateCoupon} className="grid grid-cols-3 gap-2">
+                            <input name="coupCode" placeholder="Code (e.g. SZX50)" className="p-2 border rounded-xl text-xs uppercase font-bold" required />
+                            <input name="coupValue" type="number" placeholder="Discount (₹)" className="p-2 border rounded-xl text-xs font-bold" required />
+                            <input name="coupMin" type="number" placeholder="Min Order (₹)" className="p-2 border rounded-xl text-xs font-bold" required />
+                            <button type="submit" className="col-span-3 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Publish Coupon Live</button>
+                          </form>
                         </div>
 
                         {/* Low Stock Radar */}
@@ -1163,7 +1200,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Advanced Multi-Filters & Sort Bar (Feature 17 & 18) */}
+                  {/* Advanced Multi-Filters & Sort Bar */}
                   <div className="px-4 mb-4 space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
                       <div className="flex items-center gap-2">
@@ -1297,7 +1334,7 @@ export default function App() {
                 </>
               )}
 
-              {/* Account, Bag & Wishlist Views */}
+              {/* Account Views */}
               {activeTab === "account" && (
                 <div className="p-4 space-y-6 max-w-xl mx-auto">
                   <div className="bg-zinc-950 text-white p-6 rounded-3xl space-y-2">
@@ -1491,7 +1528,7 @@ export default function App() {
               <p className="text-xs text-zinc-600 leading-relaxed pt-2">{selectedProduct.specifications}</p>
             </div>
 
-            {/* Feature 27: Customer Reviews & Ratings Engine */}
+            {/* Customer Reviews & Ratings Engine */}
             <div className="border-t pt-4 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-black uppercase tracking-wider">RATINGS & VERIFIED REVIEWS ({productReviews.length})</span>
@@ -1602,7 +1639,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* Coupon Engine */}
+              {/* Dynamic Coupon Engine */}
               <form onSubmit={handleApplyCoupon} className="flex gap-2 pt-2">
                 <input 
                   placeholder="Coupon Code (STYLE100 / STYLE20)" 
@@ -1640,7 +1677,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Printable Cash Memo Invoice Modal */}
+      {/* Printable Invoice Modal with Clean Formatting */}
       {showInvoice && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-xs font-bold text-zinc-900">
@@ -1686,7 +1723,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Floating Bottom Navigation Bar */}
+      {/* Bottom Nav Dock */}
       <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl">
         <button onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); }} className="flex flex-col items-center text-zinc-800">
           <span className="text-base">🏠</span>

@@ -113,7 +113,7 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [showPwaBanner, setShowPwaBanner] = useState(true);
+  const [showPwaBanner, setShowPwaBanner] = useState(false);
 
   // Variant States
   const [selectedSizes, setSelectedSizes] = useState({});
@@ -188,15 +188,26 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (window.location.pathname === "/admin" || window.location.hash === "#admin") {
-      setIsAdminUrl(true);
-    } else {
-      setIsAdminUrl(false);
-    }
+    const checkPath = () => {
+      if (window.location.pathname.includes("/admin") || window.location.hash.includes("admin")) {
+        setIsAdminUrl(true);
+      } else {
+        setIsAdminUrl(false);
+      }
+    };
+    checkPath();
+    window.addEventListener("popstate", checkPath);
+    window.addEventListener("hashchange", checkPath);
+
     const savedRV = localStorage.getItem("szx_recently_viewed");
     if (savedRV) {
       try { setRecentlyViewed(JSON.parse(savedRV)); } catch(e){}
     }
+
+    return () => {
+      window.removeEventListener("popstate", checkPath);
+      window.removeEventListener("hashchange", checkPath);
+    };
   }, []);
 
   // Firebase Real-time Persistent Cloud Data Sync
@@ -783,21 +794,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-stone-50/50 text-zinc-900'} pb-32 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
       
-      {/* PWA Direct Installation Banner */}
-      {showPwaBanner && (
-        <div className="bg-zinc-900 text-white px-4 py-2 text-xs flex items-center justify-between border-b border-zinc-800">
-          <div className="flex items-center gap-2">
-            <span className="text-base">📲</span>
-            <span>Install <b>STYLE ZONE - X</b> App for seamless shopping!</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => { showToastMessage("Tap browser options & choose 'Add to Home Screen'!"); setShowPwaBanner(false); }} className="bg-white text-zinc-950 px-2.5 py-1 rounded-md font-black uppercase text-[10px]">Install</button>
-            <button onClick={() => setShowPwaBanner(false)} className="text-zinc-400 font-black">✕</button>
-          </div>
-        </div>
-      )}
-
-      {/* Toast Notification Container */}
+      {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-xs flex items-center gap-2.5 animate-bounce ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-zinc-900 text-white'}`}>
           <span>{toast.type === 'error' ? '⚠️' : '⚡'}</span>
@@ -805,10 +802,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Responsive Grid Framework */}
+      {/* Main Container */}
       <div className="w-full max-w-7xl mx-auto">
         
-        {/* Style Zone - X Header Navigation */}
+        {/* Navigation Bar */}
         <header className="p-3.5 bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full max-w-md md:max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4 cursor-pointer" onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); setActiveCollection("All"); }}>
             <div className="w-9 h-9 bg-zinc-950 text-white rounded-xl flex items-center justify-center font-black tracking-tighter text-lg shadow-sm">
@@ -835,7 +832,7 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-2">
-            {!isAdmin && (
+            {!isAdmin && !isAdminUrl && (
               <>
                 <button onClick={() => setIsNotifOpen(true)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all">
                   🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-zinc-950 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{notifications.length}</span>}
@@ -845,7 +842,7 @@ export default function App() {
                 </button>
               </>
             )}
-            {!user && !isAdmin && (
+            {!user && !isAdmin && !isAdminUrl && (
               <button onClick={handleGoogleLogin} className="bg-zinc-950 hover:bg-zinc-800 text-white text-[11px] font-black px-4 py-2 rounded-xl shadow transition-all">
                 Login
               </button>
@@ -854,7 +851,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* Fashion Search & Voice Search Bar */}
+        {/* Fashion Search Bar */}
         {!isAdmin && !isAdminUrl && activeTab === "shop" && (
           <div className="sticky top-[68px] z-30 px-4 py-2.5 bg-white/90 backdrop-blur-sm border-b border-zinc-100 w-full max-w-md md:max-w-7xl mx-auto my-1 relative">
             <div className="flex items-center gap-2">
@@ -898,11 +895,24 @@ export default function App() {
           {isAdminUrl ? (
             <div className="p-4">
               <div className="bg-white p-6 rounded-3xl shadow-xl text-zinc-900 border border-zinc-200 max-w-3xl mx-auto">
-                <h2 className="text-xl font-black text-center uppercase tracking-widest mb-1">STYLE ZONE - X ACCESS</h2>
-                <p className="text-[10px] text-center uppercase text-zinc-400 font-bold mb-6">Central Store Inventory & Fulfillment Gateway</p>
+                <div className="flex justify-between items-center border-b pb-3 mb-4">
+                  <div>
+                    <h2 className="text-xl font-black uppercase tracking-widest leading-none">STYLE ZONE - X ACCESS</h2>
+                    <p className="text-[10px] uppercase text-zinc-400 font-bold mt-0.5">Store Management Hub</p>
+                  </div>
+                  {isAdmin && (
+                    <button 
+                      onClick={() => { setIsAdmin(false); window.location.href = "/"; }}
+                      className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-black"
+                    >
+                      Exit Admin
+                    </button>
+                  )}
+                </div>
                 
                 {!isAdmin ? (
-                  <div className="space-y-4 max-w-xs mx-auto">
+                  <div className="space-y-4 max-w-xs mx-auto py-8">
+                    <p className="text-xs text-center text-zinc-500 font-bold">Enter your Secure Master Passkey to open Admin Dashboard:</p>
                     <input 
                       type="password" 
                       placeholder="Access Token Key" 
@@ -910,12 +920,43 @@ export default function App() {
                       className="border-2 p-3 w-full rounded-2xl text-center font-black tracking-widest bg-zinc-50 focus:outline-none focus:border-zinc-950" 
                       onChange={(e) => {
                         setAdminPassword(e.target.value);
-                        if(e.target.value === 'Younus@968687') { setIsAdmin(true); setAdminTab("dashboard"); }
+                        if(e.target.value === 'Younus@968687') { 
+                          setIsAdmin(true); 
+                          setAdminTab("dashboard"); 
+                        }
                       }} 
                     />
                   </div>
                 ) : (
                   <div className="space-y-6">
+                    {/* Top Switcher Tabs for Easy Touch Access */}
+                    <div className="grid grid-cols-4 gap-1.5 p-1.5 bg-zinc-100 rounded-2xl border">
+                      <button 
+                        onClick={() => setAdminTab("dashboard")} 
+                        className={`py-2 rounded-xl text-xs font-black transition-all ${adminTab === 'dashboard' ? 'bg-zinc-950 text-white shadow' : 'text-zinc-600 hover:text-black'}`}
+                      >
+                        📊 Home
+                      </button>
+                      <button 
+                        onClick={() => setAdminTab("add-item")} 
+                        className={`py-2 rounded-xl text-xs font-black transition-all ${adminTab === 'add-item' ? 'bg-zinc-950 text-white shadow' : 'text-zinc-600 hover:text-black'}`}
+                      >
+                        ➕ Add Stock
+                      </button>
+                      <button 
+                        onClick={() => setAdminTab("manage-items")} 
+                        className={`py-2 rounded-xl text-xs font-black transition-all ${adminTab === 'manage-items' ? 'bg-zinc-950 text-white shadow' : 'text-zinc-600 hover:text-black'}`}
+                      >
+                        📋 Stock Grid
+                      </button>
+                      <button 
+                        onClick={() => setAdminTab("orders")} 
+                        className={`py-2 rounded-xl text-xs font-black transition-all ${adminTab === 'orders' ? 'bg-zinc-950 text-white shadow' : 'text-zinc-600 hover:text-black'}`}
+                      >
+                        🚚 Orders
+                      </button>
+                    </div>
+
                     {/* Dashboard KPI Analytics */}
                     {adminTab === "dashboard" && (
                       <div className="space-y-4">
@@ -935,6 +976,20 @@ export default function App() {
                               <p className="text-base font-black text-yellow-400 mt-1">{products.length}</p>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Add Stock Quick Trigger Card */}
+                        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
+                          <div>
+                            <h4 className="text-xs font-black text-emerald-900 uppercase">Need to add new styles?</h4>
+                            <p className="text-[10px] text-emerald-700 font-bold">Upload new garments or footwear items with full sizes.</p>
+                          </div>
+                          <button 
+                            onClick={() => setAdminTab("add-item")}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow"
+                          >
+                            + Add Stock Now
+                          </button>
                         </div>
 
                         {/* Coupon Deployment Section for Admin */}
@@ -966,7 +1021,10 @@ export default function App() {
                     {/* Add Product Form */}
                     {adminTab === "add-item" && (
                       <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-xs font-bold">
-                        <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider border-b pb-2">📦 Publish New Fashion / Footwear SKU</h3>
+                        <div className="flex justify-between items-center border-b pb-2">
+                          <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">📦 Add New Stock / SKU</h3>
+                          <button type="button" onClick={() => setAdminTab("manage-items")} className="text-[10px] text-zinc-500 underline font-black">View Stock Grid →</button>
+                        </div>
                         
                         <input name="itemName" placeholder="Product Title (e.g. Vintage Wash Oversized Tee) *" className="border p-3 rounded-xl bg-zinc-50" required />
                         
@@ -1753,29 +1811,31 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom Nav Dock */}
-      <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl">
-        <button onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); }} className="flex flex-col items-center text-zinc-800">
-          <span className="text-base">🏠</span>
-          <span className="text-[9px] font-black uppercase">Home</span>
-        </button>
-        <button onClick={() => { setActiveDepartment("Men"); setActiveTab("shop"); }} className="flex flex-col items-center text-zinc-500 hover:text-black">
-          <span className="text-base">👔</span>
-          <span className="text-[9px] font-black uppercase">Men</span>
-        </button>
-        <button onClick={() => { setActiveDepartment("Women"); setActiveTab("shop"); }} className="flex flex-col items-center text-zinc-500 hover:text-black">
-          <span className="text-base">👗</span>
-          <span className="text-[9px] font-black uppercase">Women</span>
-        </button>
-        <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center bg-zinc-950 text-white px-3 py-1 rounded-2xl shadow">
-          <span className="text-[9px] font-black">🛍️ {cart.length}</span>
-          <span className="text-[8px]">₹{finalPayableTotal}</span>
-        </button>
-        <button onClick={() => setActiveTab("account")} className="flex flex-col items-center text-zinc-500 hover:text-black">
-          <span className="text-base">👤</span>
-          <span className="text-[9px] font-black uppercase">Account</span>
-        </button>
-      </div>
+      {/* Bottom Nav Dock (Always Hidden in Admin View) */}
+      {!isAdminUrl && (
+        <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl">
+          <button onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); }} className="flex flex-col items-center text-zinc-800">
+            <span className="text-base">🏠</span>
+            <span className="text-[9px] font-black uppercase">Home</span>
+          </button>
+          <button onClick={() => { setActiveDepartment("Men"); setActiveTab("shop"); }} className="flex flex-col items-center text-zinc-500 hover:text-black">
+            <span className="text-base">👔</span>
+            <span className="text-[9px] font-black uppercase">Men</span>
+          </button>
+          <button onClick={() => { setActiveDepartment("Women"); setActiveTab("shop"); }} className="flex flex-col items-center text-zinc-500 hover:text-black">
+            <span className="text-base">👗</span>
+            <span className="text-[9px] font-black uppercase">Women</span>
+          </button>
+          <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center bg-zinc-950 text-white px-3 py-1 rounded-2xl shadow">
+            <span className="text-[9px] font-black">🛍️ {cart.length}</span>
+            <span className="text-[8px]">₹{finalPayableTotal}</span>
+          </button>
+          <button onClick={() => setActiveTab("account")} className="flex flex-col items-center text-zinc-500 hover:text-black">
+            <span className="text-base">👤</span>
+            <span className="text-[9px] font-black uppercase">Account</span>
+          </button>
+        </div>
+      )}
 
     </div>
   );

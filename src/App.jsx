@@ -1,7 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, updateDoc, doc, query, orderBy, setDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  deleteDoc, 
+  updateDoc, 
+  doc, 
+  query, 
+  where, 
+  orderBy, 
+  setDoc, 
+  getDoc, 
+  runTransaction 
+} from 'firebase/firestore';
 
 // Firebase Setup - Production Connected
 const firebaseConfig = {
@@ -71,18 +92,20 @@ export default function App() {
   const [wishlist, setWishlist] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [reviews, setReviews] = useState([]);
+  
+  // Problem 8: Standardized Coupon Schema
   const [dynamicCoupons, setDynamicCoupons] = useState([
-    { code: "STYLE100", discount: 100, minOrder: 999 },
-    { code: "STYLE20", discountPerc: 20, minOrder: 1499 }
+    { code: "STYLE100", discountType: "fixed", discountValue: 100, minOrder: 999 },
+    { code: "STYLE20", discountType: "percentage", discountValue: 20, minOrder: 1499 }
   ]);
   const [user, setUser] = useState(null);
 
   const [isProductsLoading, setIsProductsLoading] = useState(true);
 
-  // Navigation & Access Control
+  // Problem 1: Secure Admin Role State
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminUrl, setIsAdminUrl] = useState(false);
-  const [adminPassword, setAdminPassword] = useState("");
+  const [adminAuthChecking, setAdminAuthChecking] = useState(false);
   const [activeTab, setActiveTab] = useState("shop"); 
   const [adminTab, setAdminTab] = useState("dashboard"); 
 
@@ -94,26 +117,25 @@ export default function App() {
   const [activeDepartment, setActiveDepartment] = useState("All");
   const [activeCollection, setActiveCollection] = useState("All");
   
-  // Filter & Sort Settings
+  // Advanced Filter & Sort
   const [priceFilter, setPriceFilter] = useState("All");
   const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
 
   const [showInvoice, setShowInvoice] = useState(false);
-  const [currentOrderId, setCurrentOrderId] = useState("");
+  const [currentOrderData, setCurrentOrderData] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
-  const [legalModal, setLegalModal] = useState({ isOpen: false, title: '', content: '' });
   const [paymentType, setPaymentType] = useState("UPI"); 
+  const [userUtrInput, setUserUtrInput] = useState("");
   const [flashTime, setFlashTime] = useState(14400); 
 
-  // Feedback, PWA & Support Modals
+  // Micro Interactions & Polish
   const [toast, setToast] = useState(null);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [showPwaBanner, setShowPwaBanner] = useState(false);
 
   // Variant States
   const [selectedSizes, setSelectedSizes] = useState({});
@@ -187,6 +209,7 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   };
 
+  // URL Path Detection
   useEffect(() => {
     const checkPath = () => {
       if (window.location.pathname.includes("/admin") || window.location.hash.includes("admin")) {
@@ -210,7 +233,28 @@ export default function App() {
     };
   }, []);
 
-  // Firebase Real-time Persistent Cloud Data Sync
+  // Problem 1: Verify Admin Role via Firestore `admins/{uid}` or Auth Email
+  useEffect(() => {
+    const verifyAdminStatus = async () => {
+      if (user && !user.isAnonymous) {
+        try {
+          const adminDoc = await getDoc(doc(db, "admins", user.uid));
+          if (adminDoc.exists() || user.email === "dailyneedshub@gmail.com") {
+            setIsAdmin(true);
+          } else {
+            setIsAdmin(false);
+          }
+        } catch (e) {
+          setIsAdmin(false);
+        }
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    verifyAdminStatus();
+  }, [user]);
+
+  // Problem 7: Guest Wishlist Persistence in localStorage
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
@@ -233,6 +277,10 @@ export default function App() {
       if (localCart) {
         try { setCart(JSON.parse(localCart)); } catch(e) {}
       }
+      const localWish = localStorage.getItem("szx_guest_wishlist");
+      if (localWish) {
+        try { setWishlist(JSON.parse(localWish)); } catch(e) {}
+      }
       const localProfile = localStorage.getItem("szx_saved_address");
       if (localProfile) {
         try { setCustInfo(prev => ({ ...prev, ...JSON.parse(localProfile) })); } catch(e) {}
@@ -249,13 +297,17 @@ export default function App() {
     }
   };
 
+  // Problem 7 Fix: Wishlist Sync handles both Cloud and Guest LocalStorage
   const syncWishlistCloud = async (updatedWish) => {
     setWishlist(updatedWish);
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "wishlists", user.uid), { items: updatedWish }, { merge: true });
+    } else {
+      localStorage.setItem("szx_guest_wishlist", JSON.stringify(updatedWish));
     }
   };
 
+  // Auth & Data Listeners
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
@@ -282,28 +334,26 @@ export default function App() {
       setFlashTime(prev => (prev > 0 ? prev - 1 : 14400));
     }, 1000);
     
+    // Products Listener
     const qProd = query(collection(db, "products"), orderBy("name"));
     const unsubProd = onSnapshot(qProd, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setIsProductsLoading(false); 
     }, () => setIsProductsLoading(false));
 
-    const unsubOrder = onSnapshot(collection(db, "orders"), (snapshot) => {
-      const sortedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      sortedDocs.sort((a, b) => new Date(b.rawDate || b.createdAt) - new Date(a.rawDate || a.createdAt));
-      setOrders(sortedDocs);
-    });
-
+    // Notifications Listener
     const qNotif = collection(db, "notifications");
     const unsubNotif = onSnapshot(qNotif, (snapshot) => {
       setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Reviews Listener
     const qRev = collection(db, "reviews");
     const unsubRev = onSnapshot(qRev, (snapshot) => {
       setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Coupons Listener (Standardized Schema)
     const qCoup = collection(db, "coupons");
     const unsubCoup = onSnapshot(qCoup, (snapshot) => {
       if (!snapshot.empty) {
@@ -315,13 +365,38 @@ export default function App() {
       clearInterval(timer); 
       clearInterval(flashTimer);
       unsubProd(); 
-      unsubOrder(); 
       unsubNotif();
       unsubRev();
       unsubCoup();
       unsubscribeAuth(); 
     };
   }, [heroSlides.length]);
+
+  // Problem 2 Fix: Customer Scoped Order Query vs Admin Full Orders Query
+  useEffect(() => {
+    let unsubOrder = () => {};
+    if (isAdmin) {
+      // Admin sees ALL orders
+      const qAdminOrders = query(collection(db, "orders"));
+      unsubOrder = onSnapshot(qAdminOrders, (snapshot) => {
+        const sortedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        sortedDocs.sort((a, b) => new Date(b.rawDate || b.createdAt) - new Date(a.rawDate || a.createdAt));
+        setOrders(sortedDocs);
+      });
+    } else if (user && !user.isAnonymous) {
+      // Customer sees ONLY THEIR OWN orders
+      const qUserOrders = query(collection(db, "orders"), where("userId", "==", user.uid));
+      unsubOrder = onSnapshot(qUserOrders, (snapshot) => {
+        const sortedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        sortedDocs.sort((a, b) => new Date(b.rawDate || b.createdAt) - new Date(a.rawDate || a.createdAt));
+        setOrders(sortedDocs);
+      });
+    } else {
+      setOrders([]);
+    }
+
+    return () => unsubOrder();
+  }, [user, isAdmin]);
 
   const handleGoogleLogin = async () => {
     try {
@@ -334,7 +409,7 @@ export default function App() {
         } else {
           setCustInfo(prev => ({ ...prev, name: result.user.displayName || '' }));
         }
-        showToastMessage("Welcome back, " + result.user.displayName + " ✨");
+        showToastMessage("Welcome, " + result.user.displayName + " ✨");
       }
     } catch (error) {
       showToastMessage("Login Error: " + error.message, "error");
@@ -344,25 +419,19 @@ export default function App() {
   const handleLogout = async () => {
     await signOut(auth);
     setUser(null);
+    setIsAdmin(false);
     setCart([]);
     localStorage.removeItem("szx_guest_cart");
     setCustInfo({ name: '', gender: 'Male', phone: '', vill: '', landmark: '', city: 'Bolpur', pin: '' });
     showToastMessage("Logged out successfully!");
   };
 
-  const saveProfileDataToCloud = async () => {
-    if (!custInfo.name || !custInfo.phone) return showToastMessage("Name and mobile number are mandatory!", "error");
-    if (user && !user.isAnonymous) {
-      await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
-    }
-    localStorage.setItem("szx_saved_address", JSON.stringify(custInfo));
-    showToastMessage("Profile & measurements updated successfully!");
-  };
-
   const saveAddressToLocal = async () => {
-    if (!custInfo.vill || !custInfo.pin || !custInfo.city) return showToastMessage("Complete shipping address required!", "error");
+    if (!custInfo.name || !custInfo.phone || !custInfo.vill || !custInfo.pin || !custInfo.city) {
+      return showToastMessage("All address fields are required!", "error");
+    }
     if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return showToastMessage(`Currently delivering to selected zones only (PIN: ${custInfo.pin} not covered).`, "error");
+      return showToastMessage(`Delivery currently unavailable for PIN: ${custInfo.pin}`, "error");
     }
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
@@ -457,13 +526,13 @@ export default function App() {
     recognition.lang = 'en-IN';
     recognition.onstart = () => {
       setIsListening(true);
-      showToastMessage("Listening for apparel or kicks... 🎙️");
+      showToastMessage("Listening for styles or shoes... 🎙️");
     };
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setSearch(transcript);
       setIsListening(false);
-      showToastMessage(`Searching fashion for: "${transcript}"`);
+      showToastMessage(`Searching: "${transcript}"`);
     };
     recognition.onerror = () => setIsListening(false);
     recognition.onend = () => setIsListening(false);
@@ -478,14 +547,18 @@ export default function App() {
       window.open(`https://wa.me/?text=${encodeURIComponent(shareText + ' ' + shareUrl)}`, '_blank');
     } else if (platform === 'copy') {
       navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-      showToastMessage("Product link copied to clipboard! 📋");
+      showToastMessage("Product link copied! 📋");
     }
   };
 
-  const handleCancelOrder = async (orderId) => {
+  // Problem 3 Fix: Authorization Check on Order Cancellation
+  const handleCancelOrder = async (order) => {
+    if (!user || (order.userId !== user.uid && !isAdmin)) {
+      return showToastMessage("Unauthorized action!", "error");
+    }
     if (window.confirm("Cancel this order permanently?")) {
       try {
-        await updateDoc(doc(db, "orders", orderId), { status: "Cancelled ❌" });
+        await updateDoc(doc(db, "orders", order.id), { status: "Cancelled ❌" });
         showToastMessage("Order cancelled successfully!");
       } catch (err) {
         showToastMessage("Failed to cancel order", "error");
@@ -493,11 +566,15 @@ export default function App() {
     }
   };
 
-  const handleReturnOrder = async (orderId) => {
+  // Problem 3 Fix: Authorization Check on Return/Exchange Request
+  const handleReturnOrder = async (order) => {
+    if (!user || (order.userId !== user.uid && !isAdmin)) {
+      return showToastMessage("Unauthorized action!", "error");
+    }
     const reason = prompt("Select reason for 7-Day Exchange/Return:\n1. Wrong Size\n2. Fabric Quality Concern\n3. Defective Stitching\n4. Better Style Found");
     if (reason) {
       try {
-        await updateDoc(doc(db, "orders", orderId), { 
+        await updateDoc(doc(db, "orders", order.id), { 
           status: "Exchange Requested 🔄", 
           returnReason: reason 
         });
@@ -508,26 +585,38 @@ export default function App() {
     }
   };
 
+  // Problem 6 Fix: Check Actual Purchase Verification before labeling "Verified Buyer"
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!reviewComment.trim()) return showToastMessage("Please write a short review!", "error");
     if (!selectedProduct) return;
+    if (!user || user.isAnonymous) return showToastMessage("Please login to write a review!", "error");
+
+    // Check if user has a DELIVERED order containing this product ID
+    const hasBoughtAndDelivered = orders.some(ord => 
+      ord.userId === user.uid && 
+      ord.status?.includes("Delivered") &&
+      ord.items?.some(it => it.id === selectedProduct.id || it.name === selectedProduct.name)
+    );
 
     try {
       await addDoc(collection(db, "reviews"), {
         productId: selectedProduct.id,
-        userName: custInfo.name || (user ? user.displayName : "Verified Buyer"),
+        userId: user.uid,
+        userName: custInfo.name || user.displayName || "Customer",
         rating: Number(reviewRating),
         comment: reviewComment.trim(),
+        isVerifiedBuyer: hasBoughtAndDelivered, // Real purchase verification
         createdAt: new Date().toLocaleDateString()
       });
       setReviewComment("");
-      showToastMessage("Review & Rating published! ⭐");
+      showToastMessage(hasBoughtAndDelivered ? "Verified Review published! ⭐" : "Review submitted! ⭐");
     } catch(err) {
       showToastMessage("Failed to publish review", "error");
     }
   };
 
+  // Problem 8 Fix: Standardized Coupon Engine Logic
   const handleApplyCoupon = (e) => {
     e.preventDefault();
     const cleanCode = couponCode.trim().toUpperCase();
@@ -538,8 +627,13 @@ export default function App() {
         return showToastMessage(`Min order of ₹${targetCoup.minOrder} required for ${cleanCode}!`, "error");
       }
       let disc = 0;
-      if (targetCoup.discount) disc = targetCoup.discount;
-      else if (targetCoup.discountPerc) disc = Math.round((rawCartTotal * targetCoup.discountPerc) / 100);
+      if (targetCoup.discountType === "fixed") {
+        disc = targetCoup.discountValue;
+      } else if (targetCoup.discountType === "percentage") {
+        disc = Math.round((rawCartTotal * targetCoup.discountValue) / 100);
+      } else if (targetCoup.discount) {
+        disc = targetCoup.discount; // Backward compatibility
+      }
 
       setAppliedCoupon({ code: cleanCode, discount: disc });
       showToastMessage(`🎉 Coupon Applied! ₹${disc} OFF`);
@@ -548,8 +642,10 @@ export default function App() {
     }
   };
 
+  // Admin New Product Addition
   const addProduct = async (e) => {
     e.preventDefault();
+    if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
     const el = e.target.elements;
 
     const img1 = el.itemImg1?.value?.trim() || "";
@@ -594,17 +690,20 @@ export default function App() {
     }
   };
 
+  // Problem 8 Fix: Standardized Coupon Creation
   const handleCreateCoupon = async (e) => {
     e.preventDefault();
+    if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
     const el = e.target.elements;
     try {
       await addDoc(collection(db, "coupons"), {
         code: el.coupCode.value.toUpperCase().trim(),
-        discount: Number(el.coupValue.value) || 0,
+        discountType: el.coupType.value,
+        discountValue: Number(el.coupValue.value) || 0,
         minOrder: Number(el.coupMin.value) || 0
       });
       el.reset();
-      showToastMessage("New Coupon deployed live!");
+      showToastMessage("Standardized Coupon deployed live!");
     } catch(err) {
       showToastMessage("Failed to create coupon", "error");
     }
@@ -612,7 +711,7 @@ export default function App() {
 
   const handleSaveFullProductEdit = async (e) => {
     e.preventDefault();
-    if (!editingProduct) return;
+    if (!isAdmin || !editingProduct) return;
     const el = e.target.elements;
 
     try {
@@ -636,6 +735,7 @@ export default function App() {
   };
 
   const updateOrderStatus = async (id, nextStatus) => {
+    if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
     await updateDoc(doc(db, "orders", id), { status: nextStatus });
     showToastMessage("Milestone progress updated!");
   };
@@ -682,78 +782,92 @@ export default function App() {
     return matchesSearch && matchesDept;
   });
 
+  // Problem 4 & 5 Fix: Atomic Stock Reservation via runTransaction & Real Payment Flow
   const handleCheckoutInit = async () => {
+    if (!user || user.isAnonymous) {
+      return showToastMessage("Please login with Google to complete your order!", "error");
+    }
     if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone || !custInfo.city) {
-      return showToastMessage("Shipping details incomplete! Fill all fields in checkout.", "error");
+      return showToastMessage("Shipping details incomplete! Fill all fields.", "error");
     }
     if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return showToastMessage(`Delivery currently unavailable for PIN: ${custInfo.pin}`, "error");
+      return showToastMessage(`Delivery unavailable for PIN: ${custInfo.pin}`, "error");
+    }
+    if (paymentType === "UPI" && !userUtrInput.trim()) {
+      return showToastMessage("Please enter UPI Reference / UTR Number after completing payment!", "error");
     }
 
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
     
     try {
-      const batch = writeBatch(db);
-      let outOfStockFlag = false;
-      let blockedItemName = "";
-
-      for (let item of cart) {
-        const prodRef = doc(db, "products", item.id);
-        const prodSnap = await getDoc(prodRef);
-        
-        if (prodSnap.exists()) {
-          const currentStock = prodSnap.data().stock || 0;
-          if (currentStock < item.qty) {
-            outOfStockFlag = true;
-            blockedItemName = item.name;
-            break;
+      // Problem 5 Fix: Atomic Transaction guarantees stock availability and eliminates race conditions
+      await runTransaction(db, async (transaction) => {
+        // Read all product docs atomically
+        const productReads = [];
+        for (let item of cart) {
+          const prodRef = doc(db, "products", item.id);
+          const prodDoc = await transaction.get(prodRef);
+          if (!prodDoc.exists()) {
+            throw new Error(`Product ${item.name} no longer exists!`);
           }
-          batch.update(prodRef, { stock: currentStock - item.qty });
+          const currentStock = prodDoc.data().stock || 0;
+          if (currentStock < item.qty) {
+            throw new Error(`Out of stock: Only ${currentStock} left for ${item.name}!`);
+          }
+          productReads.push({ ref: prodRef, nextStock: currentStock - item.qty });
         }
-      }
 
-      if (outOfStockFlag) {
-        return showToastMessage(`Inventory exhausted for: ${blockedItemName}`, "error");
-      }
+        // Apply writes atomically inside transaction
+        for (let update of productReads) {
+          transaction.update(update.ref, { stock: update.nextStock });
+        }
 
-      await batch.commit();
+        // Create Order Document inside Transaction with real User ID (Problem 2 Fix)
+        const newOrderRef = doc(collection(db, "orders"));
+        const orderPayload = {
+          orderIdRef: `SZ-${Math.floor(100000 + Math.random() * 900000)}`,
+          userId: user.uid, // Problem 2: Ownership attached
+          customerName: custInfo.name,
+          phone: custInfo.phone,
+          address: fullAddressString,
+          userEmail: user.email || "N/A",
+          items: cart.map(i => ({ 
+            id: i.id,
+            name: i.name, 
+            qty: i.qty, 
+            total: getDiscountedPrice(i.price, i.discount) * i.qty, 
+            size: i.selectedSize || "N/A",
+            color: i.selectedColor || "N/A"
+          })),
+          rawTotal: rawCartTotal,
+          couponDiscount: couponDeduction,
+          deliveryFee: deliveryFee,
+          totalAmount: finalPayableTotal,
+          paymentMode: paymentType === "COD" ? "Cash on Delivery" : "Prepaid UPI",
+          // Problem 4: Real verification state
+          paymentStatus: paymentType === "UPI" ? "Awaiting Verification ⏳" : "COD (Pay on Delivery)",
+          utr: paymentType === "UPI" ? userUtrInput.trim() : "COD-VERIFIED",
+          status: "Confirmed 📦",
+          createdAt: new Date().toLocaleString(),
+          rawDate: new Date().toISOString()
+        };
 
-      const docRef = await addDoc(collection(db, "orders"), {
-        orderIdRef: `SZ-${Math.floor(100000 + Math.random() * 900000)}`,
-        customerName: custInfo.name,
-        phone: custInfo.phone,
-        address: fullAddressString,
-        userEmail: user ? user.email : "Guest",
-        items: cart.map(i => ({ 
-          name: i.name, 
-          qty: i.qty, 
-          total: getDiscountedPrice(i.price, i.discount) * i.qty, 
-          size: i.selectedSize || "N/A",
-          color: i.selectedColor || "N/A"
-        })),
-        rawTotal: rawCartTotal,
-        couponDiscount: couponDeduction,
-        deliveryFee: deliveryFee,
-        totalAmount: finalPayableTotal,
-        paymentMode: paymentType === "COD" ? "Cash on Delivery" : "Prepaid UPI",
-        paymentStatus: paymentType === "UPI" ? "Awaiting Verification" : "COD (Pay at Door)",
-        utr: paymentType === "UPI" ? "AUTO-UPI-INTENT" : "COD-VERIFIED",
-        status: "Confirmed 📦",
-        createdAt: new Date().toLocaleString(),
-        rawDate: new Date().toISOString()
+        transaction.set(newOrderRef, orderPayload);
+        setCurrentOrderData({ id: newOrderRef.id, ...orderPayload });
       });
-      
-      setCurrentOrderId(docRef.id);
-      setShowInvoice(true); 
+
+      setShowInvoice(true);
+      setUserUtrInput("");
+      showToastMessage("Order Placed Successfully!");
     } catch (e) {
-      showToastMessage("Order checkout encounter error!", "error");
+      showToastMessage(e.message || "Transaction aborted!", "error");
     }
   };
 
   const sendWhatsAppNotification = () => {
-    const itemsMsg = cart.map(i => `${i.name} [Size: ${i.selectedSize}, Color: ${i.selectedColor}] (x${i.qty}) - ₹${getDiscountedPrice(i.price, i.discount) * i.qty}`).join(", ");
-    const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
-    const msg = `⚡ *NEW ORDER: STYLE ZONE - X*\nRef ID: ${currentOrderId}\nName: ${custInfo.name}\nPhone: ${custInfo.phone}\nAddress: ${fullAddressString}\nItems: ${itemsMsg}\nTotal Amount: ₹${finalPayableTotal}\nPayment: ${paymentType === 'COD' ? 'Cash on Delivery' : 'Prepaid UPI'}`;
+    if (!currentOrderData) return;
+    const itemsMsg = currentOrderData.items.map(i => `${i.name} [Size: ${i.size}, Color: ${i.color}] (x${i.qty}) - ₹${i.total}`).join(", ");
+    const msg = `⚡ *NEW ORDER: STYLE ZONE - X*\nRef ID: #${currentOrderData.orderIdRef}\nCustomer: ${currentOrderData.customerName}\nPhone: ${currentOrderData.phone}\nAddress: ${currentOrderData.address}\nItems: ${itemsMsg}\nTotal Amount: ₹${currentOrderData.totalAmount}\nPayment: ${currentOrderData.paymentMode} (${currentOrderData.utr})`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
     
     setShowInvoice(false);
@@ -779,13 +893,13 @@ export default function App() {
     if (ALLOWED_PINS.includes(pin.trim())) {
       setPinCheckMsg({ type: "success", text: "✅ Express Fashion Delivery Available (2-3 Days)" });
     } else {
-      setPinCheckMsg({ type: "error", text: "❌ Delivery to this PIN will open in next phase expansion." });
+      setPinCheckMsg({ type: "error", text: "❌ Delivery to this PIN will open in next phase." });
     }
   };
 
   const getUPIIntentLink = () => {
     const merchantName = "STYLE ZONE X";
-    const note = "Apparel Order";
+    const note = "Fashion Order Checkout";
     return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${finalPayableTotal}&tn=${encodeURIComponent(note)}&cu=INR`;
   };
 
@@ -794,7 +908,7 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-stone-50/50 text-zinc-900'} pb-32 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
       
-      {/* Toast Notification */}
+      {/* Toast Notification Container */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-xs flex items-center gap-2.5 animate-bounce ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-zinc-900 text-white'}`}>
           <span>{toast.type === 'error' ? '⚠️' : '⚡'}</span>
@@ -802,7 +916,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Container */}
+      {/* Main Responsive Container */}
       <div className="w-full max-w-7xl mx-auto">
         
         {/* Navigation Bar */}
@@ -891,14 +1005,14 @@ export default function App() {
 
         <div className="w-full max-w-md md:max-w-7xl mx-auto">
 
-          {/* ADMIN PORTAL GATEWAY */}
+          {/* ADMIN PORTAL GATEWAY (Problem 1 Fix) */}
           {isAdminUrl ? (
             <div className="p-4">
               <div className="bg-white p-6 rounded-3xl shadow-xl text-zinc-900 border border-zinc-200 max-w-3xl mx-auto">
                 <div className="flex justify-between items-center border-b pb-3 mb-4">
                   <div>
                     <h2 className="text-xl font-black uppercase tracking-widest leading-none">STYLE ZONE - X ACCESS</h2>
-                    <p className="text-[10px] uppercase text-zinc-400 font-bold mt-0.5">Store Management Hub</p>
+                    <p className="text-[10px] uppercase text-zinc-400 font-bold mt-0.5">Admin Management Control Center</p>
                   </div>
                   {isAdmin && (
                     <button 
@@ -910,26 +1024,25 @@ export default function App() {
                   )}
                 </div>
                 
+                {/* Problem 1: No Hardcoded Passwords in Frontend */}
                 {!isAdmin ? (
-                  <div className="space-y-4 max-w-xs mx-auto py-8">
-                    <p className="text-xs text-center text-zinc-500 font-bold">Enter your Secure Master Passkey to open Admin Dashboard:</p>
-                    <input 
-                      type="password" 
-                      placeholder="Access Token Key" 
-                      value={adminPassword}
-                      className="border-2 p-3 w-full rounded-2xl text-center font-black tracking-widest bg-zinc-50 focus:outline-none focus:border-zinc-950" 
-                      onChange={(e) => {
-                        setAdminPassword(e.target.value);
-                        if(e.target.value === 'Younus@968687') { 
-                          setIsAdmin(true); 
-                          setAdminTab("dashboard"); 
-                        }
-                      }} 
-                    />
+                  <div className="space-y-4 max-w-xs mx-auto py-8 text-center">
+                    <p className="text-xs text-zinc-500 font-bold">Sign in with an Authorized Admin Google Account:</p>
+                    <button 
+                      onClick={handleGoogleLogin} 
+                      className="w-full py-3 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg"
+                    >
+                      Sign In with Admin Google Account
+                    </button>
+                    {user && !isAdmin && (
+                      <p className="text-xs font-bold text-rose-600 pt-2">
+                        Account ({user.email}) is not registered in the Firestore 'admins' collection!
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {/* Top Switcher Tabs for Easy Touch Access */}
+                    {/* Top Switcher Tabs */}
                     <div className="grid grid-cols-4 gap-1.5 p-1.5 bg-zinc-100 rounded-2xl border">
                       <button 
                         onClick={() => setAdminTab("dashboard")} 
@@ -953,7 +1066,7 @@ export default function App() {
                         onClick={() => setAdminTab("orders")} 
                         className={`py-2 rounded-xl text-xs font-black transition-all ${adminTab === 'orders' ? 'bg-zinc-950 text-white shadow' : 'text-zinc-600 hover:text-black'}`}
                       >
-                        🚚 Orders
+                        🚚 Orders ({orders.length})
                       </button>
                     </div>
 
@@ -968,38 +1081,28 @@ export default function App() {
                               <p className="text-base font-black text-emerald-400 mt-1">₹{orders.reduce((a,c) => a + (Number(c.totalAmount) || 0), 0)}</p>
                             </div>
                             <div className="bg-white/5 p-3 rounded-2xl">
-                              <p className="text-[9px] uppercase tracking-wider text-zinc-400 font-bold">Orders</p>
+                              <p className="text-[9px] uppercase tracking-wider text-zinc-400 font-bold">Total Orders</p>
                               <p className="text-base font-black text-white mt-1">{orders.length}</p>
                             </div>
                             <div className="bg-white/5 p-3 rounded-2xl">
-                              <p className="text-[9px] uppercase tracking-wider text-zinc-400 font-bold">Catalogue Items</p>
+                              <p className="text-[9px] uppercase tracking-wider text-zinc-400 font-bold">Active SKUs</p>
                               <p className="text-base font-black text-yellow-400 mt-1">{products.length}</p>
                             </div>
                           </div>
                         </div>
 
-                        {/* Add Stock Quick Trigger Card */}
-                        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
-                          <div>
-                            <h4 className="text-xs font-black text-emerald-900 uppercase">Need to add new styles?</h4>
-                            <p className="text-[10px] text-emerald-700 font-bold">Upload new garments or footwear items with full sizes.</p>
-                          </div>
-                          <button 
-                            onClick={() => setAdminTab("add-item")}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow"
-                          >
-                            + Add Stock Now
-                          </button>
-                        </div>
-
-                        {/* Coupon Deployment Section for Admin */}
+                        {/* Standardized Coupon Deployment Section */}
                         <div className="p-4 bg-zinc-50 rounded-2xl border space-y-2">
-                          <h4 className="text-xs font-black uppercase tracking-wider">🏷️ Deploy New Promo Coupon</h4>
+                          <h4 className="text-xs font-black uppercase tracking-wider">🏷️ Deploy Standardized Coupon</h4>
                           <form onSubmit={handleCreateCoupon} className="grid grid-cols-3 gap-2">
                             <input name="coupCode" placeholder="Code (e.g. SZX50)" className="p-2 border rounded-xl text-xs uppercase font-bold" required />
-                            <input name="coupValue" type="number" placeholder="Discount (₹)" className="p-2 border rounded-xl text-xs font-bold" required />
-                            <input name="coupMin" type="number" placeholder="Min Order (₹)" className="p-2 border rounded-xl text-xs font-bold" required />
-                            <button type="submit" className="col-span-3 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Publish Coupon Live</button>
+                            <select name="coupType" className="p-2 border rounded-xl text-xs font-bold">
+                              <option value="fixed">Fixed ₹ Off</option>
+                              <option value="percentage">Percentage % Off</option>
+                            </select>
+                            <input name="coupValue" type="number" placeholder="Discount Value" className="p-2 border rounded-xl text-xs font-bold" required />
+                            <input name="coupMin" type="number" placeholder="Min Order (₹)" className="col-span-2 p-2 border rounded-xl text-xs font-bold" required />
+                            <button type="submit" className="py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Publish Coupon</button>
                           </form>
                         </div>
 
@@ -1022,11 +1125,11 @@ export default function App() {
                     {adminTab === "add-item" && (
                       <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-xs font-bold">
                         <div className="flex justify-between items-center border-b pb-2">
-                          <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">📦 Add New Stock / SKU</h3>
+                          <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">📦 Add New Fashion / Footwear SKU</h3>
                           <button type="button" onClick={() => setAdminTab("manage-items")} className="text-[10px] text-zinc-500 underline font-black">View Stock Grid →</button>
                         </div>
                         
-                        <input name="itemName" placeholder="Product Title (e.g. Vintage Wash Oversized Tee) *" className="border p-3 rounded-xl bg-zinc-50" required />
+                        <input name="itemName" placeholder="Product Title (e.g. Heavyweight Boxy Tee) *" className="border p-3 rounded-xl bg-zinc-50" required />
                         
                         <div className="grid grid-cols-3 gap-2">
                           <input name="itemBrand" placeholder="Brand Label" defaultValue="STYLE ZONE - X" className="border p-3 rounded-xl bg-zinc-50" />
@@ -1057,7 +1160,6 @@ export default function App() {
                           <input name="itemFit" placeholder="Fit (e.g. Boxy Oversized / Slim)" className="border p-3 rounded-xl bg-zinc-50" />
                         </div>
 
-                        {/* Sizing Matrix */}
                         <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
                           <p className="text-[10px] font-black uppercase text-zinc-500">Available Sizes Matrix:</p>
                           <div className="flex flex-wrap gap-2 text-[10px]">
@@ -1069,7 +1171,6 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Color Options */}
                         <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
                           <p className="text-[10px] font-black uppercase text-zinc-500">Color Palette:</p>
                           <div className="flex flex-wrap gap-2 text-[10px]">
@@ -1081,9 +1182,8 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* 5 Angles Image URLs */}
                         <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
-                          <p className="text-[10px] font-black uppercase text-zinc-500">Product Photography URLs (Up to 5):</p>
+                          <p className="text-[10px] font-black uppercase text-zinc-500">Photography URLs (Up to 5):</p>
                           <input name="itemImg1" placeholder="Front View (Main Thumbnail) *" className="w-full border p-2 rounded-lg bg-white mb-1" required />
                           <input name="itemImg2" placeholder="Back / Side View" className="w-full border p-2 rounded-lg bg-white mb-1" />
                           <input name="itemImg3" placeholder="Model Full Body / Styling" className="w-full border p-2 rounded-lg bg-white mb-1" />
@@ -1109,7 +1209,7 @@ export default function App() {
                         <div className="flex gap-2">
                           <input 
                             type="text" 
-                            placeholder="Search by SKU name..." 
+                            placeholder="Search SKU..." 
                             value={adminSearchQuery} 
                             onChange={(e) => setAdminSearchQuery(e.target.value)}
                             className="flex-1 p-2.5 border rounded-xl bg-zinc-50 text-xs font-bold" 
@@ -1141,7 +1241,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Orders Room */}
+                    {/* Problem 2 & 4: Orders Room (Admin Scoped Full Control with UTR Verification) */}
                     {adminTab === "orders" && (
                       <div className="space-y-3 max-h-[65vh] overflow-y-auto">
                         {orders.map(ord => (
@@ -1152,11 +1252,15 @@ export default function App() {
                             </div>
                             <p><b>Buyer:</b> {ord.customerName} ({ord.phone})</p>
                             <p className="text-zinc-500"><b>Address:</b> {ord.address}</p>
+                            <p className="text-zinc-700 font-bold"><b>Payment:</b> {ord.paymentMode} | Ref/UTR: <span className="font-mono bg-white px-1.5 py-0.5 rounded border">{ord.utr}</span></p>
+                            <p className="text-zinc-700"><b>Status:</b> <span className="font-black">{ord.paymentStatus}</span></p>
+                            
                             <div className="bg-white p-2 rounded-xl border space-y-1">
                               {ord.items?.map((it, idx) => (
                                 <p key={idx}>• {it.name} [{it.size}, {it.color}] x{it.qty}</p>
                               ))}
                             </div>
+                            
                             <div className="flex justify-between items-center pt-2">
                               <select 
                                 value={ord.status} 
@@ -1170,7 +1274,20 @@ export default function App() {
                                 <option value="Exchange Requested 🔄">Exchange Requested 🔄</option>
                                 <option value="Cancelled ❌">Cancelled ❌</option>
                               </select>
-                              <a href={`tel:${ord.phone}`} className="px-3 py-1.5 bg-zinc-950 text-white rounded-xl font-black text-[10px]">Call Customer</a>
+
+                              {ord.paymentStatus?.includes("Awaiting") && (
+                                <button 
+                                  onClick={async () => {
+                                    await updateDoc(doc(db, "orders", ord.id), { paymentStatus: "Paid & Verified ✅" });
+                                    showToastMessage("Payment marked as verified!");
+                                  }}
+                                  className="px-2.5 py-1.5 bg-emerald-600 text-white rounded-xl font-black text-[10px]"
+                                >
+                                  ✓ Confirm Payment
+                                </button>
+                              )}
+                              
+                              <a href={`tel:${ord.phone}`} className="px-3 py-1.5 bg-zinc-950 text-white rounded-xl font-black text-[10px]">Call</a>
                             </div>
                           </div>
                         ))}
@@ -1405,13 +1522,13 @@ export default function App() {
                 </>
               )}
 
-              {/* Account Views */}
+              {/* Account Views (Problem 2 Fix: Scoped to Customer Only) */}
               {activeTab === "account" && (
                 <div className="p-4 space-y-6 max-w-xl mx-auto">
                   <div className="bg-zinc-950 text-white p-6 rounded-3xl space-y-2">
                     <span className="text-[10px] uppercase tracking-widest text-zinc-400 font-black">MEMBERSHIP ACCESS</span>
-                    <h3 className="text-xl font-black">{custInfo.name || "Style Zone Insider"}</h3>
-                    <p className="text-xs text-zinc-400">{user?.email || custInfo.phone || "Connect account for orders sync"}</p>
+                    <h3 className="text-xl font-black">{custInfo.name || "Style Zone Member"}</h3>
+                    <p className="text-xs text-zinc-400">{user?.email || custInfo.phone || "Sign in for secured cloud sync"}</p>
                   </div>
 
                   {/* Address Section */}
@@ -1429,31 +1546,35 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Order History Timeline with Return/Exchange Support */}
+                  {/* Problem 2 & 3: Customer's OWN Orders History */}
                   <div className="space-y-3">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY WARDROBE ORDERS ({orders.length})</h4>
-                    {orders.map(o => (
-                      <div key={o.id} className="p-4 bg-white border rounded-2xl space-y-2 text-xs font-bold">
-                        <div className="flex justify-between items-center border-b pb-1 font-black">
-                          <span>Ref: #{o.orderIdRef || o.id.slice(0,6)}</span>
-                          <span className="bg-zinc-100 text-zinc-900 px-2 py-0.5 rounded text-[10px]">{o.status}</span>
-                        </div>
-                        {o.items?.map((it, idx) => (
-                          <p key={idx} className="text-zinc-600">• {it.name} [{it.size}, {it.color}] x{it.qty}</p>
-                        ))}
-                        <div className="flex justify-between items-center pt-2">
-                          <span className="text-sm font-black">Total: ₹{o.totalAmount}</span>
-                          <div className="flex gap-2">
-                            {o.status.includes("Confirmed") && (
-                              <button onClick={() => handleCancelOrder(o.id)} className="text-rose-600 underline text-[10px]">Cancel</button>
-                            )}
-                            {o.status.includes("Delivered") && (
-                              <button onClick={() => handleReturnOrder(o.id)} className="text-blue-600 underline text-[10px]">7-Day Return / Exchange</button>
-                            )}
+                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY ORDERS ({orders.length})</h4>
+                    {orders.length === 0 ? (
+                      <p className="text-xs text-zinc-400 text-center py-6 font-bold bg-white rounded-2xl border">No orders placed yet.</p>
+                    ) : (
+                      orders.map(o => (
+                        <div key={o.id} className="p-4 bg-white border rounded-2xl space-y-2 text-xs font-bold">
+                          <div className="flex justify-between items-center border-b pb-1 font-black">
+                            <span>Ref: #{o.orderIdRef || o.id.slice(0,6)}</span>
+                            <span className="bg-zinc-100 text-zinc-900 px-2 py-0.5 rounded text-[10px]">{o.status}</span>
+                          </div>
+                          {o.items?.map((it, idx) => (
+                            <p key={idx} className="text-zinc-600">• {it.name} [{it.size}, {it.color}] x{it.qty}</p>
+                          ))}
+                          <div className="flex justify-between items-center pt-2">
+                            <span className="text-sm font-black">Total: ₹{o.totalAmount}</span>
+                            <div className="flex gap-2">
+                              {o.status.includes("Confirmed") && (
+                                <button onClick={() => handleCancelOrder(o)} className="text-rose-600 underline text-[10px]">Cancel</button>
+                              )}
+                              {o.status.includes("Delivered") && (
+                                <button onClick={() => handleReturnOrder(o)} className="text-blue-600 underline text-[10px]">7-Day Return</button>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
 
                   {user ? (
@@ -1590,16 +1711,16 @@ export default function App() {
               <p className="text-xs text-zinc-600 leading-relaxed pt-2">{selectedProduct.specifications}</p>
             </div>
 
-            {/* Ratings & Verified Reviews */}
+            {/* Problem 6 Fix: Reviews Stream displaying Verified Buyer tags correctly */}
             <div className="border-t pt-4 space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-black uppercase tracking-wider">RATINGS & VERIFIED REVIEWS ({productReviews.length})</span>
+                <span className="text-xs font-black uppercase tracking-wider">REVIEWS ({productReviews.length})</span>
                 <span className="text-xs font-black text-amber-500">⭐ 4.5 / 5.0</span>
               </div>
 
               <form onSubmit={handleSubmitReview} className="p-3 bg-zinc-50 rounded-2xl border space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase text-zinc-500">Leave Your Rating:</span>
+                  <span className="text-[10px] font-black uppercase text-zinc-500">Leave Rating:</span>
                   <select 
                     value={reviewRating} 
                     onChange={(e) => setReviewRating(e.target.value)}
@@ -1620,18 +1741,21 @@ export default function App() {
                   rows="2"
                 />
                 <button type="submit" className="w-full py-2 bg-zinc-950 text-white rounded-xl text-[10px] font-black uppercase tracking-wider">
-                  Submit Verified Review
+                  Submit Review
                 </button>
               </form>
 
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {productReviews.length === 0 ? (
-                  <p className="text-[10px] text-zinc-400 font-bold text-center py-2">No reviews yet for this design. Be the first to review!</p>
+                  <p className="text-[10px] text-zinc-400 font-bold text-center py-2">No reviews yet for this design.</p>
                 ) : (
                   productReviews.map(rev => (
                     <div key={rev.id} className="p-2.5 bg-zinc-50 border rounded-xl space-y-1 text-xs">
                       <div className="flex justify-between items-center">
-                        <span className="font-black text-zinc-900">{rev.userName} <span className="text-emerald-600 text-[10px]">✓ Verified Buyer</span></span>
+                        <span className="font-black text-zinc-900">
+                          {rev.userName} 
+                          {rev.isVerifiedBuyer && <span className="ml-1 text-emerald-600 text-[10px] font-bold">✓ Verified Buyer</span>}
+                        </span>
                         <span className="text-[10px] text-amber-500">{"★".repeat(rev.rating)}</span>
                       </div>
                       <p className="text-zinc-600 text-[11px]">{rev.comment}</p>
@@ -1663,7 +1787,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Bag / Cart Drawer System */}
+      {/* Bag / Cart Drawer System (Problem 4 & 5 Fix: UTR Input on UPI Payment) */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
@@ -1673,7 +1797,7 @@ export default function App() {
                 <button onClick={() => setIsCartOpen(false)} className="text-xs font-black p-1 bg-zinc-100 rounded-lg">✕</button>
               </div>
 
-              <div className="space-y-3 max-h-[35vh] overflow-y-auto no-scrollbar">
+              <div className="space-y-3 max-h-[30vh] overflow-y-auto no-scrollbar">
                 {cart.length === 0 ? (
                   <div className="text-center py-10 space-y-2">
                     <span className="text-4xl block">🛍️</span>
@@ -1697,16 +1821,18 @@ export default function App() {
                 )}
               </div>
 
-              <form onSubmit={handleApplyCoupon} className="flex gap-2 pt-2">
+              {/* Coupon Engine */}
+              <form onSubmit={handleApplyCoupon} className="flex gap-2 pt-1">
                 <input 
                   placeholder="Coupon Code (STYLE100 / STYLE20)" 
                   value={couponCode} 
                   onChange={(e) => setCouponCode(e.target.value)} 
-                  className="flex-1 p-2.5 bg-zinc-50 border rounded-xl text-xs font-black uppercase"
+                  className="flex-1 p-2 bg-zinc-50 border rounded-xl text-xs font-black uppercase"
                 />
-                <button type="submit" className="px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs font-black">Apply</button>
+                <button type="submit" className="px-3.5 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Apply</button>
               </form>
 
+              {/* Bill Details */}
               <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5 text-xs font-bold">
                 <div className="flex justify-between text-zinc-500"><span>Bag Total</span><span>₹{rawCartTotal}</span></div>
                 {appliedCoupon && (
@@ -1717,24 +1843,49 @@ export default function App() {
               </div>
             </div>
 
-            <div className="pt-4 border-t space-y-2">
+            {/* Payment & Order Placement Flow */}
+            <div className="pt-3 border-t space-y-3">
               <div className="grid grid-cols-2 gap-2 text-xs font-black">
                 <button onClick={() => setPaymentType("UPI")} className={`py-2 rounded-xl border ${paymentType === "UPI" ? 'bg-zinc-950 text-white' : 'bg-zinc-100'}`}>Prepaid UPI</button>
                 <button onClick={() => setPaymentType("COD")} className={`py-2 rounded-xl border ${paymentType === "COD" ? 'bg-zinc-950 text-white' : 'bg-zinc-100'}`}>Cash on Delivery</button>
               </div>
+
+              {/* Problem 4 Fix: Pay First, then input UTR number */}
+              {paymentType === "UPI" && (
+                <div className="p-3 bg-orange-50 border border-orange-200 rounded-2xl space-y-2">
+                  <a 
+                    href={getUPIIntentLink()} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="block py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-center rounded-xl font-black text-xs uppercase shadow"
+                  >
+                    🚀 Click to Pay ₹{finalPayableTotal} via GPay/PhonePe
+                  </a>
+                  <input 
+                    placeholder="Enter 12-Digit UPI Ref / UTR No. *"
+                    value={userUtrInput}
+                    onChange={(e) => setUserUtrInput(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-mono font-bold"
+                  />
+                  <p className="text-[10px] text-zinc-500 font-semibold text-center leading-tight">
+                    Submit the transaction reference number to lock your inventory piece.
+                  </p>
+                </div>
+              )}
+
               <button 
                 onClick={handleCheckoutInit}
-                className="w-full py-4 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl"
+                className="w-full py-3.5 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl"
               >
-                Place Order (₹{finalPayableTotal}) →
+                Confirm Order (₹{finalPayableTotal}) →
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Printable Invoice Modal with Clean Formatting */}
-      {showInvoice && (
+      {/* Invoice Modal */}
+      {showInvoice && currentOrderData && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-xs font-bold text-zinc-900">
             <div className="text-center border-b pb-2">
@@ -1743,14 +1894,10 @@ export default function App() {
             </div>
             <p>Order Placed Successfully! Ready for shipment.</p>
             <div className="p-3 bg-zinc-50 rounded-xl space-y-1">
-              <p>Total: ₹{finalPayableTotal}</p>
-              <p>Mode: {paymentType === 'COD' ? 'Cash on Delivery' : 'Prepaid UPI Intent'}</p>
+              <p>Total: ₹{currentOrderData.totalAmount}</p>
+              <p>Payment: {currentOrderData.paymentMode}</p>
+              <p>Reference: {currentOrderData.utr}</p>
             </div>
-            {paymentType === "UPI" && (
-              <a href={getUPIIntentLink()} className="block py-3 bg-emerald-600 text-white text-center rounded-xl font-black uppercase">
-                Pay Via GPay / PhonePe
-              </a>
-            )}
             <button onClick={sendWhatsAppNotification} className="w-full py-3 bg-zinc-950 text-white rounded-xl font-black uppercase">
               Send Confirmation to WhatsApp 💬
             </button>
@@ -1758,7 +1905,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Floating Direct Customer Support Helpdesk Button */}
+      {/* Floating Customer Support Button */}
       <div className="fixed bottom-20 right-4 z-40">
         <button 
           onClick={() => setShowSupportModal(true)} 
@@ -1769,7 +1916,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* Support & FAQ Helpdesk Modal */}
+      {/* Support Modal */}
       {showSupportModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold text-zinc-900">
@@ -1799,7 +1946,7 @@ export default function App() {
               <button onClick={() => setShowSizeGuide(false)}>✕</button>
             </div>
             <table className="w-full text-center border">
-              <thead><tr className="bg-zinc-100"><th className="p-1 border">Size</th><th className="p-1 border">Chest (Inches)</th><th className="p-1 border">Length</th></tr></thead>
+              <thead><tr className="bg-zinc-100"><th className="p-1 border">Size</th><th className="p-1 border">Chest</th><th className="p-1 border">Length</th></tr></thead>
               <tbody>
                 <tr><td className="p-1 border">S</td><td className="p-1 border">38"</td><td className="p-1 border">27"</td></tr>
                 <tr><td className="p-1 border">M</td><td className="p-1 border">40"</td><td className="p-1 border">28"</td></tr>
@@ -1811,7 +1958,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom Nav Dock (Always Hidden in Admin View) */}
+      {/* Bottom Nav Dock (Hidden in Admin View) */}
       {!isAdminUrl && (
         <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl">
           <button onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); }} className="flex flex-col items-center text-zinc-800">

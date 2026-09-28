@@ -47,6 +47,12 @@ const BRAND_TAGLINE = "Define Your Style.";
 const MY_UPI_ID = "8637589429-3@ybl"; 
 const ALLOWED_PINS = ["731204", "731240", "731215", "731224", "731236", "731214", "700001", "700019"];
 
+// Authorized Admin Emails
+const ADMIN_EMAILS = [
+  "sekhyounusabedin2005@gmail.com",
+  "dailyneedshub@gmail.com"
+];
+
 const FASHION_DEPARTMENTS = ["All", "Men", "Women", "Kids", "Footwear"];
 
 const FASHION_COLLECTIONS_MAP = {
@@ -93,7 +99,6 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [reviews, setReviews] = useState([]);
   
-  // Problem 8: Standardized Coupon Schema
   const [dynamicCoupons, setDynamicCoupons] = useState([
     { code: "STYLE100", discountType: "fixed", discountValue: 100, minOrder: 999 },
     { code: "STYLE20", discountType: "percentage", discountValue: 20, minOrder: 1499 }
@@ -102,10 +107,9 @@ export default function App() {
 
   const [isProductsLoading, setIsProductsLoading] = useState(true);
 
-  // Problem 1: Secure Admin Role State
+  // Admin Access Control
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminUrl, setIsAdminUrl] = useState(false);
-  const [adminAuthChecking, setAdminAuthChecking] = useState(false);
   const [activeTab, setActiveTab] = useState("shop"); 
   const [adminTab, setAdminTab] = useState("dashboard"); 
 
@@ -117,7 +121,6 @@ export default function App() {
   const [activeDepartment, setActiveDepartment] = useState("All");
   const [activeCollection, setActiveCollection] = useState("All");
   
-  // Advanced Filter & Sort
   const [priceFilter, setPriceFilter] = useState("All");
   const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
@@ -129,7 +132,6 @@ export default function App() {
   const [userUtrInput, setUserUtrInput] = useState("");
   const [flashTime, setFlashTime] = useState(14400); 
 
-  // Micro Interactions & Polish
   const [toast, setToast] = useState(null);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -137,31 +139,25 @@ export default function App() {
   const [showSizeGuide, setShowSizeGuide] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
 
-  // Variant States
   const [selectedSizes, setSelectedSizes] = useState({});
   const [selectedColors, setSelectedColors] = useState({});
   const [productPageQty, setProductPageQty] = useState(1);
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
 
-  // Reviews submission state
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
 
-  // Pincode validation
   const [pinCheckInput, setPinCheckInput] = useState("");
   const [pinCheckMsg, setPinCheckMsg] = useState(null);
 
-  // Coupon Engine
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(null);
 
-  // Admin Controls
   const [adminSelectedDept, setAdminSelectedDept] = useState("Men");
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [adminDeptFilter, setAdminDeptFilter] = useState("All");
   const [editingProduct, setEditingProduct] = useState(null);
 
-  // Customer Profile & Logistics
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
     gender: 'Male',
@@ -172,7 +168,6 @@ export default function App() {
     pin: '' 
   });
 
-  // Hero Banners
   const [heroSlides] = useState([
     {
       id: 1,
@@ -233,13 +228,17 @@ export default function App() {
     };
   }, []);
 
-  // Problem 1: Verify Admin Role via Firestore `admins/{uid}` or Auth Email
+  // Admin Verification
   useEffect(() => {
     const verifyAdminStatus = async () => {
       if (user && !user.isAnonymous) {
+        if (ADMIN_EMAILS.includes(user.email)) {
+          setIsAdmin(true);
+          return;
+        }
         try {
           const adminDoc = await getDoc(doc(db, "admins", user.uid));
-          if (adminDoc.exists() || user.email === "dailyneedshub@gmail.com") {
+          if (adminDoc.exists()) {
             setIsAdmin(true);
           } else {
             setIsAdmin(false);
@@ -254,7 +253,7 @@ export default function App() {
     verifyAdminStatus();
   }, [user]);
 
-  // Problem 7: Guest Wishlist Persistence in localStorage
+  // Cloud & Guest Sync
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
@@ -297,7 +296,6 @@ export default function App() {
     }
   };
 
-  // Problem 7 Fix: Wishlist Sync handles both Cloud and Guest LocalStorage
   const syncWishlistCloud = async (updatedWish) => {
     setWishlist(updatedWish);
     if (user && !user.isAnonymous) {
@@ -307,7 +305,7 @@ export default function App() {
     }
   };
 
-  // Auth & Data Listeners
+  // Auth & Realtime Data Listeners
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
@@ -334,26 +332,22 @@ export default function App() {
       setFlashTime(prev => (prev > 0 ? prev - 1 : 14400));
     }, 1000);
     
-    // Products Listener
     const qProd = query(collection(db, "products"), orderBy("name"));
     const unsubProd = onSnapshot(qProd, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setIsProductsLoading(false); 
     }, () => setIsProductsLoading(false));
 
-    // Notifications Listener
     const qNotif = collection(db, "notifications");
     const unsubNotif = onSnapshot(qNotif, (snapshot) => {
       setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Reviews Listener
     const qRev = collection(db, "reviews");
     const unsubRev = onSnapshot(qRev, (snapshot) => {
       setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Coupons Listener (Standardized Schema)
     const qCoup = collection(db, "coupons");
     const unsubCoup = onSnapshot(qCoup, (snapshot) => {
       if (!snapshot.empty) {
@@ -372,11 +366,10 @@ export default function App() {
     };
   }, [heroSlides.length]);
 
-  // Problem 2 Fix: Customer Scoped Order Query vs Admin Full Orders Query
+  // Scoped Orders Listener
   useEffect(() => {
     let unsubOrder = () => {};
     if (isAdmin) {
-      // Admin sees ALL orders
       const qAdminOrders = query(collection(db, "orders"));
       unsubOrder = onSnapshot(qAdminOrders, (snapshot) => {
         const sortedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -384,7 +377,6 @@ export default function App() {
         setOrders(sortedDocs);
       });
     } else if (user && !user.isAnonymous) {
-      // Customer sees ONLY THEIR OWN orders
       const qUserOrders = query(collection(db, "orders"), where("userId", "==", user.uid));
       unsubOrder = onSnapshot(qUserOrders, (snapshot) => {
         const sortedDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -409,7 +401,7 @@ export default function App() {
         } else {
           setCustInfo(prev => ({ ...prev, name: result.user.displayName || '' }));
         }
-        showToastMessage("Welcome, " + result.user.displayName + " ✨");
+        showToastMessage("Welcome to STYLE ZONE - X ✨");
       }
     } catch (error) {
       showToastMessage("Login Error: " + error.message, "error");
@@ -526,7 +518,7 @@ export default function App() {
     recognition.lang = 'en-IN';
     recognition.onstart = () => {
       setIsListening(true);
-      showToastMessage("Listening for styles or shoes... 🎙️");
+      showToastMessage("Listening for styles or kicks... 🎙️");
     };
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
@@ -551,7 +543,6 @@ export default function App() {
     }
   };
 
-  // Problem 3 Fix: Authorization Check on Order Cancellation
   const handleCancelOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -566,7 +557,6 @@ export default function App() {
     }
   };
 
-  // Problem 3 Fix: Authorization Check on Return/Exchange Request
   const handleReturnOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -585,14 +575,12 @@ export default function App() {
     }
   };
 
-  // Problem 6 Fix: Check Actual Purchase Verification before labeling "Verified Buyer"
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!reviewComment.trim()) return showToastMessage("Please write a short review!", "error");
     if (!selectedProduct) return;
     if (!user || user.isAnonymous) return showToastMessage("Please login to write a review!", "error");
 
-    // Check if user has a DELIVERED order containing this product ID
     const hasBoughtAndDelivered = orders.some(ord => 
       ord.userId === user.uid && 
       ord.status?.includes("Delivered") &&
@@ -606,7 +594,7 @@ export default function App() {
         userName: custInfo.name || user.displayName || "Customer",
         rating: Number(reviewRating),
         comment: reviewComment.trim(),
-        isVerifiedBuyer: hasBoughtAndDelivered, // Real purchase verification
+        isVerifiedBuyer: hasBoughtAndDelivered,
         createdAt: new Date().toLocaleDateString()
       });
       setReviewComment("");
@@ -616,7 +604,6 @@ export default function App() {
     }
   };
 
-  // Problem 8 Fix: Standardized Coupon Engine Logic
   const handleApplyCoupon = (e) => {
     e.preventDefault();
     const cleanCode = couponCode.trim().toUpperCase();
@@ -632,7 +619,7 @@ export default function App() {
       } else if (targetCoup.discountType === "percentage") {
         disc = Math.round((rawCartTotal * targetCoup.discountValue) / 100);
       } else if (targetCoup.discount) {
-        disc = targetCoup.discount; // Backward compatibility
+        disc = targetCoup.discount;
       }
 
       setAppliedCoupon({ code: cleanCode, discount: disc });
@@ -642,7 +629,6 @@ export default function App() {
     }
   };
 
-  // Admin New Product Addition
   const addProduct = async (e) => {
     e.preventDefault();
     if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
@@ -684,13 +670,12 @@ export default function App() {
         createdAt: new Date().toISOString()
       });
       e.target.reset();
-      showToastMessage("Product published into Style Zone catalogue!");
+      showToastMessage("Product published into STYLE ZONE - X catalogue!");
     } catch (error) {
       showToastMessage("Database write error!", "error");
     }
   };
 
-  // Problem 8 Fix: Standardized Coupon Creation
   const handleCreateCoupon = async (e) => {
     e.preventDefault();
     if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
@@ -782,7 +767,6 @@ export default function App() {
     return matchesSearch && matchesDept;
   });
 
-  // Problem 4 & 5 Fix: Atomic Stock Reservation via runTransaction & Real Payment Flow
   const handleCheckoutInit = async () => {
     if (!user || user.isAnonymous) {
       return showToastMessage("Please login with Google to complete your order!", "error");
@@ -800,9 +784,7 @@ export default function App() {
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
     
     try {
-      // Problem 5 Fix: Atomic Transaction guarantees stock availability and eliminates race conditions
       await runTransaction(db, async (transaction) => {
-        // Read all product docs atomically
         const productReads = [];
         for (let item of cart) {
           const prodRef = doc(db, "products", item.id);
@@ -817,16 +799,14 @@ export default function App() {
           productReads.push({ ref: prodRef, nextStock: currentStock - item.qty });
         }
 
-        // Apply writes atomically inside transaction
         for (let update of productReads) {
           transaction.update(update.ref, { stock: update.nextStock });
         }
 
-        // Create Order Document inside Transaction with real User ID (Problem 2 Fix)
         const newOrderRef = doc(collection(db, "orders"));
         const orderPayload = {
           orderIdRef: `SZ-${Math.floor(100000 + Math.random() * 900000)}`,
-          userId: user.uid, // Problem 2: Ownership attached
+          userId: user.uid,
           customerName: custInfo.name,
           phone: custInfo.phone,
           address: fullAddressString,
@@ -844,7 +824,6 @@ export default function App() {
           deliveryFee: deliveryFee,
           totalAmount: finalPayableTotal,
           paymentMode: paymentType === "COD" ? "Cash on Delivery" : "Prepaid UPI",
-          // Problem 4: Real verification state
           paymentStatus: paymentType === "UPI" ? "Awaiting Verification ⏳" : "COD (Pay on Delivery)",
           utr: paymentType === "UPI" ? userUtrInput.trim() : "COD-VERIFIED",
           status: "Confirmed 📦",
@@ -1005,7 +984,7 @@ export default function App() {
 
         <div className="w-full max-w-md md:max-w-7xl mx-auto">
 
-          {/* ADMIN PORTAL GATEWAY (Problem 1 Fix) */}
+          {/* ADMIN PORTAL GATEWAY */}
           {isAdminUrl ? (
             <div className="p-4">
               <div className="bg-white p-6 rounded-3xl shadow-xl text-zinc-900 border border-zinc-200 max-w-3xl mx-auto">
@@ -1024,7 +1003,6 @@ export default function App() {
                   )}
                 </div>
                 
-                {/* Problem 1: No Hardcoded Passwords in Frontend */}
                 {!isAdmin ? (
                   <div className="space-y-4 max-w-xs mx-auto py-8 text-center">
                     <p className="text-xs text-zinc-500 font-bold">Sign in with an Authorized Admin Google Account:</p>
@@ -1036,7 +1014,7 @@ export default function App() {
                     </button>
                     {user && !isAdmin && (
                       <p className="text-xs font-bold text-rose-600 pt-2">
-                        Account ({user.email}) is not registered in the Firestore 'admins' collection!
+                        Account ({user.email}) is not registered in the authorized admin list!
                       </p>
                     )}
                   </div>
@@ -1241,7 +1219,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Problem 2 & 4: Orders Room (Admin Scoped Full Control with UTR Verification) */}
+                    {/* Orders Room */}
                     {adminTab === "orders" && (
                       <div className="space-y-3 max-h-[65vh] overflow-y-auto">
                         {orders.map(ord => (
@@ -1522,7 +1500,7 @@ export default function App() {
                 </>
               )}
 
-              {/* Account Views (Problem 2 Fix: Scoped to Customer Only) */}
+              {/* Account Views */}
               {activeTab === "account" && (
                 <div className="p-4 space-y-6 max-w-xl mx-auto">
                   <div className="bg-zinc-950 text-white p-6 rounded-3xl space-y-2">
@@ -1546,7 +1524,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Problem 2 & 3: Customer's OWN Orders History */}
+                  {/* Customer's OWN Orders History */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY ORDERS ({orders.length})</h4>
                     {orders.length === 0 ? (
@@ -1711,7 +1689,7 @@ export default function App() {
               <p className="text-xs text-zinc-600 leading-relaxed pt-2">{selectedProduct.specifications}</p>
             </div>
 
-            {/* Problem 6 Fix: Reviews Stream displaying Verified Buyer tags correctly */}
+            {/* Reviews Stream */}
             <div className="border-t pt-4 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-black uppercase tracking-wider">REVIEWS ({productReviews.length})</span>
@@ -1787,7 +1765,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Bag / Cart Drawer System (Problem 4 & 5 Fix: UTR Input on UPI Payment) */}
+      {/* Bag / Cart Drawer System */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
@@ -1850,7 +1828,6 @@ export default function App() {
                 <button onClick={() => setPaymentType("COD")} className={`py-2 rounded-xl border ${paymentType === "COD" ? 'bg-zinc-950 text-white' : 'bg-zinc-100'}`}>Cash on Delivery</button>
               </div>
 
-              {/* Problem 4 Fix: Pay First, then input UTR number */}
               {paymentType === "UPI" && (
                 <div className="p-3 bg-orange-50 border border-orange-200 rounded-2xl space-y-2">
                   <a 

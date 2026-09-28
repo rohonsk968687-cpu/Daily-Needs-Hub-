@@ -207,7 +207,6 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   };
 
-  // URL Path Detection
   useEffect(() => {
     const checkPath = () => {
       if (window.location.pathname.includes("/admin") || window.location.hash.includes("admin")) {
@@ -567,7 +566,6 @@ export default function App() {
     }
   };
 
-  // Cancel Order & Restore Stock via Transaction
   const handleCancelOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -593,7 +591,6 @@ export default function App() {
     }
   };
 
-  // 7-Day Return / Exchange System
   const handleReturnOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -805,7 +802,6 @@ export default function App() {
           productReads.push({ ref: prodRef, nextStock: currentStock - item.qty });
         }
 
-        // Reserve stock
         for (let update of productReads) {
           transaction.update(update.ref, { stock: update.nextStock });
         }
@@ -1024,7 +1020,7 @@ export default function App() {
                     </button>
                     {user && !isAdmin && (
                       <p className="text-xs font-bold text-rose-600 pt-2">
-                        Account ({user.email}) is not registered in the authorized admin list!
+                        Account ({user.email}) is not authorized as Admin!
                       </p>
                     )}
                   </div>
@@ -1079,7 +1075,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* LIVE PAYMENT ALERT RADAR (2-Min Verification Alert for Admin) */}
+                        {/* LIVE PAYMENT ALERT RADAR */}
                         {orders.filter(o => o.paymentStatus?.includes("2 Min Timer") || o.status?.includes("Awaiting")).length > 0 && (
                           <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-2 animate-pulse">
                             <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
@@ -1458,7 +1454,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Product Grid */}
+                  {/* Product Grid - Full Fit Images No Cut */}
                   {isProductsLoading ? (
                     <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
                       {[1,2,3,4].map(idx => (
@@ -1484,8 +1480,8 @@ export default function App() {
                           const mainImg = p.images?.[0] || "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600&q=80";
                           return (
                             <div key={p.id} className="bg-white rounded-3xl p-3 border border-zinc-200/80 hover:shadow-2xl transition-all duration-300 flex flex-col justify-between group">
-                              <div className="relative h-52 md:h-64 rounded-2xl overflow-hidden bg-zinc-100 mb-2 cursor-pointer" onClick={() => addToRecentlyViewed(p)}>
-                                <img src={mainImg} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              <div className="relative h-56 md:h-64 rounded-2xl overflow-hidden bg-stone-100/70 mb-2 cursor-pointer flex items-center justify-center p-1.5" onClick={() => addToRecentlyViewed(p)}>
+                                <img src={mainImg} alt={p.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); toggleWishlist(p); }} 
                                   className="absolute top-2.5 right-2.5 p-2 bg-white/90 backdrop-blur-sm rounded-full text-xs shadow-md"
@@ -1531,8 +1527,8 @@ export default function App() {
                       <div className="flex gap-3 overflow-x-auto no-scrollbar">
                         {recentlyViewed.map(rv => (
                           <div key={rv.id} onClick={() => addToRecentlyViewed(rv)} className="w-24 shrink-0 cursor-pointer text-center">
-                            <div className="h-28 w-full rounded-2xl overflow-hidden border mb-1 bg-zinc-100">
-                              <img src={rv.images?.[0]} alt={rv.name} className="w-full h-full object-cover" />
+                            <div className="h-28 w-full rounded-2xl overflow-hidden border mb-1 bg-stone-100/70 p-1 flex items-center justify-center">
+                              <img src={rv.images?.[0]} alt={rv.name} className="w-full h-full object-contain" />
                             </div>
                             <p className="text-[10px] font-black truncate">{rv.name}</p>
                             <p className="text-[10px] font-extrabold text-zinc-900">₹{getDiscountedPrice(rv.price, rv.discount)}</p>
@@ -1611,7 +1607,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* FULL SCREEN PRODUCT DETAILS MODAL */}
+      {/* FULL SCREEN PRODUCT DETAILS MODAL - FULL FIT OBJECT-CONTAIN (NO CUTS) */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-zinc-900 flex flex-col justify-between animate-fadeIn">
           <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm">
@@ -1629,28 +1625,30 @@ export default function App() {
           </div>
 
           <div className="max-w-2xl mx-auto w-full p-4 space-y-6 pb-28">
-            <div className="relative h-80 md:h-[450px] rounded-3xl overflow-hidden bg-zinc-100 border">
+            {/* Main Stage Image - 100% Uncropped Responsive Framing */}
+            <div className="relative h-96 md:h-[480px] rounded-3xl overflow-hidden bg-stone-100/80 border flex items-center justify-center p-3">
               <img 
                 src={(selectedProduct.images || [selectedProduct.img])[currentProductSlide]} 
                 alt={selectedProduct.name} 
-                className="w-full h-full object-cover" 
+                className="w-full h-full object-contain" 
               />
               {(selectedProduct.images || []).length > 1 && (
-                <div className="absolute bottom-3 right-3 bg-black/70 text-white text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm">
+                <div className="absolute bottom-3 right-3 bg-black/75 text-white text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm">
                   {currentProductSlide + 1} / {selectedProduct.images.length}
                 </div>
               )}
             </div>
 
+            {/* Thumbnail Carousel - Full Fit */}
             {(selectedProduct.images || []).length > 1 && (
-              <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                 {selectedProduct.images.map((img, idx) => (
                   <div 
                     key={idx} 
                     onClick={() => setCurrentProductSlide(idx)}
-                    className={`w-16 h-20 rounded-xl overflow-hidden border-2 cursor-pointer ${currentProductSlide === idx ? 'border-zinc-950 scale-105' : 'border-zinc-200 opacity-60'}`}
+                    className={`w-16 h-20 rounded-xl overflow-hidden border-2 cursor-pointer bg-stone-100/70 p-1 flex items-center justify-center transition-all ${currentProductSlide === idx ? 'border-zinc-950 scale-105 shadow-sm' : 'border-zinc-200 opacity-60'}`}
                   >
-                    <img src={img} alt="thumb" className="w-full h-full object-cover" />
+                    <img src={img} alt="thumb" className="w-full h-full object-contain" />
                   </div>
                 ))}
               </div>

@@ -70,6 +70,7 @@ export default function App() {
   const [cart, setCart] = useState([]);
   const [wishlist, setWishlist] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [user, setUser] = useState(null);
 
   const [isProductsLoading, setIsProductsLoading] = useState(true);
@@ -88,7 +89,12 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [activeDepartment, setActiveDepartment] = useState("All");
   const [activeCollection, setActiveCollection] = useState("All");
+  
+  // Advanced Filter States
+  const [priceFilter, setPriceFilter] = useState("All");
+  const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
+
   const [showInvoice, setShowInvoice] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState("");
   const [darkMode, setDarkMode] = useState(false);
@@ -108,6 +114,10 @@ export default function App() {
   const [selectedColors, setSelectedColors] = useState({});
   const [productPageQty, setProductPageQty] = useState(1);
   const [currentProductSlide, setCurrentProductSlide] = useState(0);
+
+  // Reviews submission state
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
 
   // Pincode validation
   const [pinCheckInput, setPinCheckInput] = useState("");
@@ -272,12 +282,18 @@ export default function App() {
       setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const qRev = collection(db, "reviews");
+    const unsubRev = onSnapshot(qRev, (snapshot) => {
+      setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     return () => { 
       clearInterval(timer); 
       clearInterval(flashTimer);
       unsubProd(); 
       unsubOrder(); 
       unsubNotif();
+      unsubRev();
       unsubscribeAuth(); 
     };
   }, [heroSlides.length]);
@@ -453,7 +469,7 @@ export default function App() {
   };
 
   const handleReturnOrder = async (orderId) => {
-    const reason = prompt("Reason for 7-Day Exchange/Return (e.g., Wrong Size, Color, Fit):");
+    const reason = prompt("Select reason for 7-Day Exchange/Return:\n1. Wrong Size\n2. Fabric Quality Concern\n3. Defective Stitching\n4. Better Style Found");
     if (reason) {
       try {
         await updateDoc(doc(db, "orders", orderId), { 
@@ -464,6 +480,27 @@ export default function App() {
       } catch (err) {
         showToastMessage("Failed to process request", "error");
       }
+    }
+  };
+
+  // Submit Product Review
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!reviewComment.trim()) return showToastMessage("Please write a short review!", "error");
+    if (!selectedProduct) return;
+
+    try {
+      await addDoc(collection(db, "reviews"), {
+        productId: selectedProduct.id,
+        userName: custInfo.name || (user ? user.displayName : "Verified Buyer"),
+        rating: Number(reviewRating),
+        comment: reviewComment.trim(),
+        createdAt: new Date().toLocaleDateString()
+      });
+      setReviewComment("");
+      showToastMessage("Review & Rating published! ⭐");
+    } catch(err) {
+      showToastMessage("Failed to publish review", "error");
     }
   };
 
@@ -562,30 +599,41 @@ export default function App() {
     showToastMessage("Milestone progress updated!");
   };
 
-  const updateOrderPaymentStatus = async (id, nextPayStatus) => {
-    await updateDoc(doc(db, "orders", id), { paymentStatus: nextPayStatus });
-    showToastMessage("Payment authorization verified!");
-  };
-
   const rawCartTotal = cart.reduce((a, c) => a + getDiscountedPrice(c.price, c.discount) * c.qty, 0);
   const couponDeduction = appliedCoupon ? appliedCoupon.discount : 0;
   const deliveryFee = (rawCartTotal - couponDeduction) >= 999 || rawCartTotal === 0 ? 0 : 60;
   const finalPayableTotal = Math.max(0, rawCartTotal - couponDeduction + deliveryFee);
 
-  // Search, Category and Sort Pipeline
+  // Search, Advanced Filter, Category and Sort Pipeline
   const filtered = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
                           (p.brand && p.brand.toLowerCase().includes(search.toLowerCase())) ||
                           (p.subCategory && p.subCategory.toLowerCase().includes(search.toLowerCase()));
     const matchesDepartment = activeDepartment === "All" || p.category === activeDepartment;
     const matchesCollection = activeCollection === "All" || p.subCategory === activeCollection;
-    return matchesSearch && matchesDepartment && matchesCollection;
+
+    // Price Filter
+    const finalPrice = getDiscountedPrice(p.price, p.discount);
+    let matchesPrice = true;
+    if (priceFilter === "under500") matchesPrice = finalPrice < 500;
+    else if (priceFilter === "500-1000") matchesPrice = finalPrice >= 500 && finalPrice <= 1000;
+    else if (priceFilter === "1000-2000") matchesPrice = finalPrice >= 1000 && finalPrice <= 2000;
+    else if (priceFilter === "above2000") matchesPrice = finalPrice > 2000;
+
+    // Size Filter
+    let matchesSize = true;
+    if (sizeFilter !== "All") {
+      matchesSize = p.availableSizes && p.availableSizes.includes(sizeFilter);
+    }
+
+    return matchesSearch && matchesDepartment && matchesCollection && matchesPrice && matchesSize;
   }).sort((a, b) => {
     const priceA = getDiscountedPrice(a.price, a.discount);
     const priceB = getDiscountedPrice(b.price, b.discount);
     if (sortBy === "priceLow") return priceA - priceB;
     if (sortBy === "priceHigh") return priceB - priceA;
     if (sortBy === "newest") return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    if (sortBy === "discount") return (b.discount || 0) - (a.discount || 0);
     return 0; // recommended
   });
 
@@ -701,6 +749,9 @@ export default function App() {
     const note = "Apparel Order";
     return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${finalPayableTotal}&tn=${encodeURIComponent(note)}&cu=INR`;
   };
+
+  // Product Specific Reviews
+  const productReviews = selectedProduct ? reviews.filter(r => r.productId === selectedProduct.id) : [];
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-stone-50/50 text-zinc-900'} pb-32 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
@@ -1065,14 +1116,14 @@ export default function App() {
                   </div>
 
                   {/* Shop by Department Circles */}
-                  <div className="px-4 mb-8">
+                  <div className="px-4 mb-6">
                     <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 mb-3">SHOP BY DEPARTMENT</h3>
                     <div className="grid grid-cols-4 gap-2.5 text-center">
                       {[
-                        { title: "Men", icon: "👔", img: "https://images.unsplash.com/photo-1516257984-b1b4d707412e?w=300&q=80" },
-                        { title: "Women", icon: "👗", img: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=300&q=80" },
-                        { title: "Kids", icon: "🧒", img: "https://images.unsplash.com/photo-1503919545889-aef636e10ad4?w=300&q=80" },
-                        { title: "Footwear", icon: "👟", img: "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=300&q=80" }
+                        { title: "Men", img: "https://images.unsplash.com/photo-1516257984-b1b4d707412e?w=300&q=80" },
+                        { title: "Women", img: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=300&q=80" },
+                        { title: "Kids", img: "https://images.unsplash.com/photo-1503919545889-aef636e10ad4?w=300&q=80" },
+                        { title: "Footwear", img: "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=300&q=80" }
                       ].map(dept => (
                         <div 
                           key={dept.title} 
@@ -1112,19 +1163,52 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Filter & Sort Bar */}
-                  <div className="px-4 mb-4 flex items-center justify-between text-xs font-bold">
-                    <span className="text-zinc-400 uppercase tracking-widest">{filtered.length} STYLES FOUND</span>
-                    <select 
-                      value={sortBy} 
-                      onChange={(e) => setSortBy(e.target.value)}
-                      className="p-2 border rounded-xl bg-white font-black text-zinc-800 focus:outline-none"
-                    >
-                      <option value="recommended">Featured Picks</option>
-                      <option value="newest">New Arrivals</option>
-                      <option value="priceLow">Price: Low to High</option>
-                      <option value="priceHigh">Price: High to Low</option>
-                    </select>
+                  {/* Advanced Multi-Filters & Sort Bar (Feature 17 & 18) */}
+                  <div className="px-4 mb-4 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Filter Price:</span>
+                        <select 
+                          value={priceFilter} 
+                          onChange={(e) => setPriceFilter(e.target.value)}
+                          className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
+                        >
+                          <option value="All">All Prices</option>
+                          <option value="under500">Under ₹500</option>
+                          <option value="500-1000">₹500 - ₹1,000</option>
+                          <option value="1000-2000">₹1,000 - ₹2,000</option>
+                          <option value="above2000">₹2,000+</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Size:</span>
+                        <select 
+                          value={sizeFilter} 
+                          onChange={(e) => setSizeFilter(e.target.value)}
+                          className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
+                        >
+                          <option value="All">All Sizes</option>
+                          {APPAREL_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                          {FOOTWEAR_SIZES_ADULT.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Sort:</span>
+                        <select 
+                          value={sortBy} 
+                          onChange={(e) => setSortBy(e.target.value)}
+                          className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
+                        >
+                          <option value="recommended">Featured Picks</option>
+                          <option value="newest">New Arrivals</option>
+                          <option value="priceLow">Price: Low to High</option>
+                          <option value="priceHigh">Price: High to Low</option>
+                          <option value="discount">Biggest Discount</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Product Grid */}
@@ -1140,48 +1224,56 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {filtered.map(p => {
-                        const finalPrice = getDiscountedPrice(p.price, p.discount);
-                        const isWish = wishlist.find(x => x.id === p.id);
-                        const mainImg = p.images?.[0] || "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600&q=80";
-                        return (
-                          <div key={p.id} className="bg-white rounded-3xl p-3 border border-zinc-200/80 hover:shadow-2xl transition-all duration-300 flex flex-col justify-between group">
-                            <div className="relative h-52 md:h-64 rounded-2xl overflow-hidden bg-zinc-100 mb-2 cursor-pointer" onClick={() => addToRecentlyViewed(p)}>
-                              <img src={mainImg} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); toggleWishlist(p); }} 
-                                className="absolute top-2.5 right-2.5 p-2 bg-white/90 backdrop-blur-sm rounded-full text-xs shadow-md"
-                              >
-                                {isWish ? "❤️" : "🤍"}
-                              </button>
-                              {p.discount > 0 && (
-                                <span className="absolute bottom-2.5 left-2.5 bg-zinc-950 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
-                                  {p.discount}% OFF
-                                </span>
-                              )}
-                            </div>
+                      {filtered.length === 0 ? (
+                        <div className="col-span-full text-center py-16 bg-white rounded-3xl border border-dashed p-6 space-y-2">
+                          <span className="text-4xl block">🔍</span>
+                          <h4 className="font-black text-sm">No Fashion Pieces Match Your Filter</h4>
+                          <p className="text-xs text-zinc-400 font-bold">Try adjusting price, size, or department criteria.</p>
+                        </div>
+                      ) : (
+                        filtered.map(p => {
+                          const finalPrice = getDiscountedPrice(p.price, p.discount);
+                          const isWish = wishlist.find(x => x.id === p.id);
+                          const mainImg = p.images?.[0] || "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600&q=80";
+                          return (
+                            <div key={p.id} className="bg-white rounded-3xl p-3 border border-zinc-200/80 hover:shadow-2xl transition-all duration-300 flex flex-col justify-between group">
+                              <div className="relative h-52 md:h-64 rounded-2xl overflow-hidden bg-zinc-100 mb-2 cursor-pointer" onClick={() => addToRecentlyViewed(p)}>
+                                <img src={mainImg} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); toggleWishlist(p); }} 
+                                  className="absolute top-2.5 right-2.5 p-2 bg-white/90 backdrop-blur-sm rounded-full text-xs shadow-md"
+                                >
+                                  {isWish ? "❤️" : "🤍"}
+                                </button>
+                                {p.discount > 0 && (
+                                  <span className="absolute bottom-2.5 left-2.5 bg-zinc-950 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                                    {p.discount}% OFF
+                                  </span>
+                                )}
+                              </div>
 
-                            <div className="space-y-1">
-                              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{p.brand || "STYLE ZONE - X"}</p>
-                              <h4 onClick={() => addToRecentlyViewed(p)} className="text-xs font-black text-zinc-900 truncate cursor-pointer hover:underline">{p.name}</h4>
-                              
-                              <div className="flex items-center gap-2 pt-0.5">
-                                <span className="text-sm font-black text-zinc-950">₹{finalPrice}</span>
-                                {p.discount > 0 && <span className="text-[10px] text-zinc-400 line-through font-bold">₹{p.price}</span>}
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{p.brand || "STYLE ZONE - X"}</p>
+                                <h4 onClick={() => addToRecentlyViewed(p)} className="text-xs font-black text-zinc-900 truncate cursor-pointer hover:underline">{p.name}</h4>
+                                
+                                <div className="flex items-center gap-2 pt-0.5">
+                                  <span className="text-sm font-black text-zinc-950">₹{finalPrice}</span>
+                                  {p.discount > 0 && <span className="text-[10px] text-zinc-400 line-through font-bold">₹{p.price}</span>}
+                                </div>
+                              </div>
+
+                              <div className="mt-3 flex gap-2">
+                                <button 
+                                  onClick={() => addToRecentlyViewed(p)} 
+                                  className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 font-black text-[10px] uppercase rounded-xl transition-all"
+                                >
+                                  Quick View
+                                </button>
                               </div>
                             </div>
-
-                            <div className="mt-3 flex gap-2">
-                              <button 
-                                onClick={() => addToRecentlyViewed(p)} 
-                                className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 font-black text-[10px] uppercase rounded-xl transition-all"
-                              >
-                                Quick View
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })
+                      )}
                     </div>
                   )}
 
@@ -1205,7 +1297,7 @@ export default function App() {
                 </>
               )}
 
-              {/* Account, Bag & Wishlist Views are mapped smoothly */}
+              {/* Account, Bag & Wishlist Views */}
               {activeTab === "account" && (
                 <div className="p-4 space-y-6 max-w-xl mx-auto">
                   <div className="bg-zinc-950 text-white p-6 rounded-3xl space-y-2">
@@ -1229,7 +1321,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Order History Timeline */}
+                  {/* Order History Timeline with Return/Exchange Support */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY WARDROBE ORDERS ({orders.length})</h4>
                     {orders.map(o => (
@@ -1248,7 +1340,7 @@ export default function App() {
                               <button onClick={() => handleCancelOrder(o.id)} className="text-rose-600 underline text-[10px]">Cancel</button>
                             )}
                             {o.status.includes("Delivered") && (
-                              <button onClick={() => handleReturnOrder(o.id)} className="text-blue-600 underline text-[10px]">7-Day Return</button>
+                              <button onClick={() => handleReturnOrder(o.id)} className="text-blue-600 underline text-[10px]">7-Day Return / Exchange</button>
                             )}
                           </div>
                         </div>
@@ -1397,6 +1489,59 @@ export default function App() {
                 <div><span className="text-zinc-400">Policy:</span> <b>7 Days Exchange</b></div>
               </div>
               <p className="text-xs text-zinc-600 leading-relaxed pt-2">{selectedProduct.specifications}</p>
+            </div>
+
+            {/* Feature 27: Customer Reviews & Ratings Engine */}
+            <div className="border-t pt-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-black uppercase tracking-wider">RATINGS & VERIFIED REVIEWS ({productReviews.length})</span>
+                <span className="text-xs font-black text-amber-500">⭐ 4.5 / 5.0</span>
+              </div>
+
+              {/* Review Input Box */}
+              <form onSubmit={handleSubmitReview} className="p-3 bg-zinc-50 rounded-2xl border space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-zinc-500">Leave Your Rating:</span>
+                  <select 
+                    value={reviewRating} 
+                    onChange={(e) => setReviewRating(e.target.value)}
+                    className="p-1 border rounded bg-white text-xs font-black"
+                  >
+                    <option value="5">⭐⭐⭐⭐⭐ 5 Stars</option>
+                    <option value="4">⭐⭐⭐⭐ 4 Stars</option>
+                    <option value="3">⭐⭐⭐ 3 Stars</option>
+                    <option value="2">⭐⭐ 2 Stars</option>
+                    <option value="1">⭐ 1 Star</option>
+                  </select>
+                </div>
+                <textarea 
+                  placeholder="Share feedback on fabric, fitting, or stitch quality..." 
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  className="w-full p-2.5 bg-white border rounded-xl text-xs" 
+                  rows="2"
+                />
+                <button type="submit" className="w-full py-2 bg-zinc-950 text-white rounded-xl text-[10px] font-black uppercase tracking-wider">
+                  Submit Verified Review
+                </button>
+              </form>
+
+              {/* Reviews Stream */}
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {productReviews.length === 0 ? (
+                  <p className="text-[10px] text-zinc-400 font-bold text-center py-2">No reviews yet for this design. Be the first to review!</p>
+                ) : (
+                  productReviews.map(rev => (
+                    <div key={rev.id} className="p-2.5 bg-zinc-50 border rounded-xl space-y-1 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="font-black text-zinc-900">{rev.userName} <span className="text-emerald-600 text-[10px]">✓ Verified Buyer</span></span>
+                        <span className="text-[10px] text-amber-500">{"★".repeat(rev.rating)}</span>
+                      </div>
+                      <p className="text-zinc-600 text-[11px]">{rev.comment}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
 

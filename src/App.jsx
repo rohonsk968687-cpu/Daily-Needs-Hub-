@@ -20,7 +20,7 @@ const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// STYLE ZONE - X Brand & Departments
+// Brand Attributes
 const BRAND_NAME = "STYLE ZONE - X";
 const BRAND_TAGLINE = "Define Your Style.";
 const MY_UPI_ID = "8637589429-3@ybl"; 
@@ -79,7 +79,7 @@ export default function App() {
 
   const [isProductsLoading, setIsProductsLoading] = useState(true);
 
-  // Navigation & Control States
+  // Navigation & Access Control
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAdminUrl, setIsAdminUrl] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
@@ -94,7 +94,7 @@ export default function App() {
   const [activeDepartment, setActiveDepartment] = useState("All");
   const [activeCollection, setActiveCollection] = useState("All");
   
-  // Advanced Filter & Sorting
+  // Filter & Sort Settings
   const [priceFilter, setPriceFilter] = useState("All");
   const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
@@ -106,12 +106,14 @@ export default function App() {
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [flashTime, setFlashTime] = useState(14400); 
 
-  // Feedback & Micro Interactions
+  // Feedback, PWA & Support Modals
   const [toast, setToast] = useState(null);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [showSizeGuide, setShowSizeGuide] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showPwaBanner, setShowPwaBanner] = useState(true);
 
   // Variant States
   const [selectedSizes, setSelectedSizes] = useState({});
@@ -291,7 +293,6 @@ export default function App() {
       setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Dynamic Coupon Subscription from Firestore
     const qCoup = collection(db, "coupons");
     const unsubCoup = onSnapshot(qCoup, (snapshot) => {
       if (!snapshot.empty) {
@@ -536,7 +537,6 @@ export default function App() {
     }
   };
 
-  // Admin New Product Addition
   const addProduct = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
@@ -583,7 +583,6 @@ export default function App() {
     }
   };
 
-  // Admin Dynamic Coupon Creation
   const handleCreateCoupon = async (e) => {
     e.preventDefault();
     const el = e.target.elements;
@@ -784,7 +783,21 @@ export default function App() {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-stone-50/50 text-zinc-900'} pb-32 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
       
-      {/* Toast Notification */}
+      {/* PWA Direct Installation Banner */}
+      {showPwaBanner && (
+        <div className="bg-zinc-900 text-white px-4 py-2 text-xs flex items-center justify-between border-b border-zinc-800">
+          <div className="flex items-center gap-2">
+            <span className="text-base">📲</span>
+            <span>Install <b>STYLE ZONE - X</b> App for seamless shopping!</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { showToastMessage("Tap browser options & choose 'Add to Home Screen'!"); setShowPwaBanner(false); }} className="bg-white text-zinc-950 px-2.5 py-1 rounded-md font-black uppercase text-[10px]">Install</button>
+            <button onClick={() => setShowPwaBanner(false)} className="text-zinc-400 font-black">✕</button>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification Container */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-xs flex items-center gap-2.5 animate-bounce ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-zinc-900 text-white'}`}>
           <span>{toast.type === 'error' ? '⚠️' : '⚡'}</span>
@@ -792,10 +805,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Responsive Container */}
+      {/* Main Responsive Grid Framework */}
       <div className="w-full max-w-7xl mx-auto">
         
-        {/* Navigation Bar */}
+        {/* Style Zone - X Header Navigation */}
         <header className="p-3.5 bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full max-w-md md:max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4 cursor-pointer" onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); setActiveCollection("All"); }}>
             <div className="w-9 h-9 bg-zinc-950 text-white rounded-xl flex items-center justify-center font-black tracking-tighter text-lg shadow-sm">
@@ -841,7 +854,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* Fashion Search & Voice Search */}
+        {/* Fashion Search & Voice Search Bar */}
         {!isAdmin && !isAdminUrl && activeTab === "shop" && (
           <div className="sticky top-[68px] z-30 px-4 py-2.5 bg-white/90 backdrop-blur-sm border-b border-zinc-100 w-full max-w-md md:max-w-7xl mx-auto my-1 relative">
             <div className="flex items-center gap-2">
@@ -1400,7 +1413,6 @@ export default function App() {
       {/* FULL SCREEN FASHION PRODUCT DETAIL MODAL */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-zinc-900 flex flex-col justify-between animate-fadeIn">
-          {/* Top Bar */}
           <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm">
             <button onClick={() => setSelectedProduct(null)} className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider bg-zinc-100 px-3 py-1.5 rounded-full">
               ← Close
@@ -1415,9 +1427,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Details Content */}
           <div className="max-w-2xl mx-auto w-full p-4 space-y-6 pb-28">
-            {/* Multi-angle Photos */}
             <div className="relative h-80 md:h-[450px] rounded-3xl overflow-hidden bg-zinc-100 border">
               <img 
                 src={(selectedProduct.images || [selectedProduct.img])[currentProductSlide]} 
@@ -1431,7 +1441,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Thumbnails */}
             {(selectedProduct.images || []).length > 1 && (
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {selectedProduct.images.map((img, idx) => (
@@ -1446,7 +1455,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Header Titles */}
             <div className="space-y-1">
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{selectedProduct.brand || "STYLE ZONE - X"}</span>
               <h1 className="text-xl md:text-2xl font-black font-serif">{selectedProduct.name}</h1>
@@ -1461,7 +1469,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Size Selector + Size Guide */}
             {selectedProduct.availableSizes && selectedProduct.availableSizes.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <div className="flex justify-between items-center">
@@ -1482,7 +1489,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Color Palette Selector */}
             {selectedProduct.availableColors && selectedProduct.availableColors.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <span className="text-xs font-black uppercase tracking-wider">SELECT COLOR</span>
@@ -1500,7 +1506,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Pincode Estimator */}
             <div className="p-4 bg-zinc-50 rounded-2xl border space-y-2">
               <span className="text-xs font-black uppercase tracking-wider">🚚 Check Delivery Speed</span>
               <div className="flex gap-2">
@@ -1516,7 +1521,6 @@ export default function App() {
               {pinCheckMsg && <p className="text-[10px] font-black">{pinCheckMsg.text}</p>}
             </div>
 
-            {/* Fashion Specifications */}
             <div className="border-t pt-4 space-y-2">
               <span className="text-xs font-black uppercase tracking-wider">FABRIC & CRAFT SPECIFICATIONS</span>
               <div className="grid grid-cols-2 gap-2 text-xs bg-zinc-50 p-4 rounded-2xl border">
@@ -1528,14 +1532,13 @@ export default function App() {
               <p className="text-xs text-zinc-600 leading-relaxed pt-2">{selectedProduct.specifications}</p>
             </div>
 
-            {/* Customer Reviews & Ratings Engine */}
+            {/* Ratings & Verified Reviews */}
             <div className="border-t pt-4 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-black uppercase tracking-wider">RATINGS & VERIFIED REVIEWS ({productReviews.length})</span>
                 <span className="text-xs font-black text-amber-500">⭐ 4.5 / 5.0</span>
               </div>
 
-              {/* Review Input Box */}
               <form onSubmit={handleSubmitReview} className="p-3 bg-zinc-50 rounded-2xl border space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase text-zinc-500">Leave Your Rating:</span>
@@ -1563,7 +1566,6 @@ export default function App() {
                 </button>
               </form>
 
-              {/* Reviews Stream */}
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {productReviews.length === 0 ? (
                   <p className="text-[10px] text-zinc-400 font-bold text-center py-2">No reviews yet for this design. Be the first to review!</p>
@@ -1582,7 +1584,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Sticky Bottom Bar */}
           <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t p-3.5 z-50 flex gap-3 max-w-2xl mx-auto shadow-2xl">
             <button 
               onClick={() => addToCart(selectedProduct, productPageQty)}
@@ -1604,7 +1605,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Bag / Cart Drawer System with Coupon Code Engine */}
+      {/* Bag / Cart Drawer System */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
@@ -1614,7 +1615,6 @@ export default function App() {
                 <button onClick={() => setIsCartOpen(false)} className="text-xs font-black p-1 bg-zinc-100 rounded-lg">✕</button>
               </div>
 
-              {/* Items */}
               <div className="space-y-3 max-h-[35vh] overflow-y-auto no-scrollbar">
                 {cart.length === 0 ? (
                   <div className="text-center py-10 space-y-2">
@@ -1639,7 +1639,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Dynamic Coupon Engine */}
               <form onSubmit={handleApplyCoupon} className="flex gap-2 pt-2">
                 <input 
                   placeholder="Coupon Code (STYLE100 / STYLE20)" 
@@ -1650,7 +1649,6 @@ export default function App() {
                 <button type="submit" className="px-4 py-2.5 bg-zinc-950 text-white rounded-xl text-xs font-black">Apply</button>
               </form>
 
-              {/* Bill Details */}
               <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5 text-xs font-bold">
                 <div className="flex justify-between text-zinc-500"><span>Bag Total</span><span>₹{rawCartTotal}</span></div>
                 {appliedCoupon && (
@@ -1698,6 +1696,38 @@ export default function App() {
             <button onClick={sendWhatsAppNotification} className="w-full py-3 bg-zinc-950 text-white rounded-xl font-black uppercase">
               Send Confirmation to WhatsApp 💬
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Direct Customer Support Helpdesk Button */}
+      <div className="fixed bottom-20 right-4 z-40">
+        <button 
+          onClick={() => setShowSupportModal(true)} 
+          className="bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-full shadow-2xl flex items-center gap-2 font-black text-xs uppercase"
+        >
+          <span>💬</span>
+          <span className="hidden md:inline">Support</span>
+        </button>
+      </div>
+
+      {/* Support & FAQ Helpdesk Modal */}
+      {showSupportModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold text-zinc-900">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black uppercase">Customer Care & Support 🎧</h3>
+              <button onClick={() => setShowSupportModal(false)}>✕</button>
+            </div>
+            <p className="text-zinc-500">Need help with sizing, delivery tracking, or exchanges?</p>
+            <div className="space-y-2">
+              <a href="https://wa.me/918637589429?text=Hi%20Style%20Zone%20X%20Support" target="_blank" rel="noreferrer" className="block p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-center font-black">
+                Chat on WhatsApp (+91 8637589429)
+              </a>
+              <a href="tel:+918637589429" className="block p-3 bg-zinc-50 text-zinc-800 border rounded-xl text-center font-black">
+                Call Direct Concierge
+              </a>
+            </div>
           </div>
         </div>
       )}

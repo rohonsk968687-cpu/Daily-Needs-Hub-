@@ -50,7 +50,7 @@ const ALLOWED_PINS = ["731204", "731240", "731215", "731224", "731236", "731214"
 // Authorized Admin Emails
 const ADMIN_EMAILS = [
   "sekhyounusabedin2005@gmail.com",
-  "dailyneedshub@gmail.com"
+  "stylezone.x0@gmail.com"
 ];
 
 const FASHION_DEPARTMENTS = ["All", "Men", "Women", "Kids", "Footwear"];
@@ -125,11 +125,14 @@ export default function App() {
   const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
 
-  const [showInvoice, setShowInvoice] = useState(false);
-  const [currentOrderData, setCurrentOrderData] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
+  // 2-Minute Verification Modal & States
   const [paymentType, setPaymentType] = useState("UPI"); 
-  const [userUtrInput, setUserUtrInput] = useState("");
+  const [activePaymentOrder, setActivePaymentOrder] = useState(null);
+  const [verificationCountdown, setVerificationCountdown] = useState(120);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [completedOrderReceipt, setCompletedOrderReceipt] = useState(null);
+
+  const [darkMode, setDarkMode] = useState(false);
   const [flashTime, setFlashTime] = useState(14400); 
 
   const [toast, setToast] = useState(null);
@@ -253,22 +256,18 @@ export default function App() {
     verifyAdminStatus();
   }, [user]);
 
-  // Cloud & Guest Sync
+  // Wishlist & Cart Persistence
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
         const cartDoc = await getDoc(doc(db, "carts", user.uid));
-        if (cartDoc.exists()) {
-          setCart(cartDoc.data().items || []);
-        }
+        if (cartDoc.exists()) setCart(cartDoc.data().items || []);
+        
         const profileDoc = await getDoc(doc(db, "profiles", user.uid));
-        if (profileDoc.exists()) {
-          setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
-        }
+        if (profileDoc.exists()) setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
+
         const wishDoc = await getDoc(doc(db, "wishlists", user.uid));
-        if (wishDoc.exists()) {
-          setWishlist(wishDoc.data().items || []);
-        }
+        if (wishDoc.exists()) setWishlist(wishDoc.data().items || []);
       };
       loadUserCloudData();
     } else {
@@ -305,7 +304,7 @@ export default function App() {
     }
   };
 
-  // Auth & Realtime Data Listeners
+  // Auth & General Listeners
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
@@ -324,13 +323,8 @@ export default function App() {
       }
     });
 
-    const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
-    }, 5000);
-
-    const flashTimer = setInterval(() => {
-      setFlashTime(prev => (prev > 0 ? prev - 1 : 14400));
-    }, 1000);
+    const timer = setInterval(() => setCurrentSlide((prev) => (prev + 1) % heroSlides.length), 5000);
+    const flashTimer = setInterval(() => setFlashTime(prev => (prev > 0 ? prev - 1 : 14400)), 1000);
     
     const qProd = query(collection(db, "products"), orderBy("name"));
     const unsubProd = onSnapshot(qProd, (snapshot) => {
@@ -390,6 +384,36 @@ export default function App() {
     return () => unsubOrder();
   }, [user, isAdmin]);
 
+  // 2-Minute Payment Verification Timer
+  useEffect(() => {
+    let timer = null;
+    if (activePaymentOrder && verificationCountdown > 0) {
+      timer = setInterval(() => {
+        setVerificationCountdown(prev => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [activePaymentOrder, verificationCountdown]);
+
+  // Real-time listener for current pending payment order
+  useEffect(() => {
+    if (!activePaymentOrder) return;
+    const unsub = onSnapshot(doc(db, "orders", activePaymentOrder.id), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.paymentStatus === "Paid & Verified ✅" || data.status === "Confirmed 📦") {
+          setCompletedOrderReceipt({ id: docSnap.id, ...data });
+          setActivePaymentOrder(null);
+          setShowInvoice(true);
+          setCart([]);
+          syncCart([]);
+          showToastMessage("🎉 Payment Received & Verified! Order Confirmed.");
+        }
+      }
+    });
+    return () => unsub();
+  }, [activePaymentOrder]);
+
   const handleGoogleLogin = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -423,13 +447,13 @@ export default function App() {
       return showToastMessage("All address fields are required!", "error");
     }
     if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return showToastMessage(`Delivery currently unavailable for PIN: ${custInfo.pin}`, "error");
+      return showToastMessage(`Delivery unavailable for PIN: ${custInfo.pin}`, "error");
     }
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("szx_saved_address", JSON.stringify(custInfo));
-    showToastMessage("Shipping address verified and locked!");
+    showToastMessage("Shipping address verified & locked!");
   };
 
   const getDiscountedPrice = (price, discount) => {
@@ -518,7 +542,7 @@ export default function App() {
     recognition.lang = 'en-IN';
     recognition.onstart = () => {
       setIsListening(true);
-      showToastMessage("Listening for styles or kicks... 🎙️");
+      showToastMessage("Listening for styles or shoes... 🎙️");
     };
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
@@ -543,20 +567,33 @@ export default function App() {
     }
   };
 
+  // Cancel Order & Restore Stock via Transaction
   const handleCancelOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
     }
-    if (window.confirm("Cancel this order permanently?")) {
+    if (window.confirm("Cancel this order? Reserved stock will be restored automatically.")) {
       try {
-        await updateDoc(doc(db, "orders", order.id), { status: "Cancelled ❌" });
-        showToastMessage("Order cancelled successfully!");
+        await runTransaction(db, async (transaction) => {
+          for (let it of order.items) {
+            const prodRef = doc(db, "products", it.id);
+            const prodDoc = await transaction.get(prodRef);
+            if (prodDoc.exists()) {
+              const currentStock = prodDoc.data().stock || 0;
+              transaction.update(prodRef, { stock: currentStock + it.qty });
+            }
+          }
+          const orderRef = doc(db, "orders", order.id);
+          transaction.update(orderRef, { status: "Cancelled ❌" });
+        });
+        showToastMessage("Order cancelled & stock restored! 🔄");
       } catch (err) {
-        showToastMessage("Failed to cancel order", "error");
+        showToastMessage("Failed to cancel order: " + err.message, "error");
       }
     }
   };
 
+  // 7-Day Return / Exchange System
   const handleReturnOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -579,7 +616,7 @@ export default function App() {
     e.preventDefault();
     if (!reviewComment.trim()) return showToastMessage("Please write a short review!", "error");
     if (!selectedProduct) return;
-    if (!user || user.isAnonymous) return showToastMessage("Please login to write a review!", "error");
+    if (!user || user.isAnonymous) return showToastMessage("Please login with Google to write a review!", "error");
 
     const hasBoughtAndDelivered = orders.some(ord => 
       ord.userId === user.uid && 
@@ -688,41 +725,10 @@ export default function App() {
         minOrder: Number(el.coupMin.value) || 0
       });
       el.reset();
-      showToastMessage("Standardized Coupon deployed live!");
+      showToastMessage("Coupon deployed live!");
     } catch(err) {
       showToastMessage("Failed to create coupon", "error");
     }
-  };
-
-  const handleSaveFullProductEdit = async (e) => {
-    e.preventDefault();
-    if (!isAdmin || !editingProduct) return;
-    const el = e.target.elements;
-
-    try {
-      await updateDoc(doc(db, "products", editingProduct.id), {
-        name: el.editName.value,
-        brand: el.editBrand.value,
-        category: el.editCategory.value,
-        subCategory: el.editSubCategory.value,
-        price: Number(el.editPrice.value),
-        discount: Number(el.editDiscount.value) || 0,
-        stock: Number(el.editStock.value),
-        fabric: el.editFabric.value,
-        fit: el.editFit.value,
-        specifications: el.editSpecs.value
-      });
-      setEditingProduct(null);
-      showToastMessage("Product details updated successfully!");
-    } catch (err) {
-      showToastMessage("Error updating product!", "error");
-    }
-  };
-
-  const updateOrderStatus = async (id, nextStatus) => {
-    if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
-    await updateDoc(doc(db, "orders", id), { status: nextStatus });
-    showToastMessage("Milestone progress updated!");
   };
 
   const rawCartTotal = cart.reduce((a, c) => a + getDiscountedPrice(c.price, c.discount) * c.qty, 0);
@@ -767,6 +773,7 @@ export default function App() {
     return matchesSearch && matchesDept;
   });
 
+  // Atomic Stock Reservation + No-UTR 2-Minute Flow
   const handleCheckoutInit = async () => {
     if (!user || user.isAnonymous) {
       return showToastMessage("Please login with Google to complete your order!", "error");
@@ -777,20 +784,19 @@ export default function App() {
     if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
       return showToastMessage(`Delivery unavailable for PIN: ${custInfo.pin}`, "error");
     }
-    if (paymentType === "UPI" && !userUtrInput.trim()) {
-      return showToastMessage("Please enter UPI Reference / UTR Number after completing payment!", "error");
-    }
 
     const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
     
     try {
+      let createdOrder = null;
+
       await runTransaction(db, async (transaction) => {
         const productReads = [];
         for (let item of cart) {
           const prodRef = doc(db, "products", item.id);
           const prodDoc = await transaction.get(prodRef);
           if (!prodDoc.exists()) {
-            throw new Error(`Product ${item.name} no longer exists!`);
+            throw new Error(`Product ${item.name} not found!`);
           }
           const currentStock = prodDoc.data().stock || 0;
           if (currentStock < item.qty) {
@@ -799,6 +805,7 @@ export default function App() {
           productReads.push({ ref: prodRef, nextStock: currentStock - item.qty });
         }
 
+        // Reserve stock
         for (let update of productReads) {
           transaction.update(update.ref, { stock: update.nextStock });
         }
@@ -824,43 +831,46 @@ export default function App() {
           deliveryFee: deliveryFee,
           totalAmount: finalPayableTotal,
           paymentMode: paymentType === "COD" ? "Cash on Delivery" : "Prepaid UPI",
-          paymentStatus: paymentType === "UPI" ? "Awaiting Verification ⏳" : "COD (Pay on Delivery)",
-          utr: paymentType === "UPI" ? userUtrInput.trim() : "COD-VERIFIED",
-          status: "Confirmed 📦",
+          paymentStatus: paymentType === "UPI" ? "Verifying (2 Min Timer) ⏳" : "COD (Pay on Delivery)",
+          status: paymentType === "COD" ? "Confirmed 📦" : "Awaiting Verification ⏳",
           createdAt: new Date().toLocaleString(),
           rawDate: new Date().toISOString()
         };
 
         transaction.set(newOrderRef, orderPayload);
-        setCurrentOrderData({ id: newOrderRef.id, ...orderPayload });
+        createdOrder = { id: newOrderRef.id, ...orderPayload };
       });
 
-      setShowInvoice(true);
-      setUserUtrInput("");
-      showToastMessage("Order Placed Successfully!");
+      setIsCartOpen(false);
+
+      if (paymentType === "UPI") {
+        window.open(getUPIIntentLink(), '_blank');
+        setActivePaymentOrder(createdOrder);
+        setVerificationCountdown(120);
+      } else {
+        setCompletedOrderReceipt(createdOrder);
+        setShowInvoice(true);
+        setCart([]);
+        syncCart([]);
+        showToastMessage("Order placed successfully with Cash on Delivery!");
+      }
     } catch (e) {
       showToastMessage(e.message || "Transaction aborted!", "error");
     }
   };
 
   const sendWhatsAppNotification = () => {
-    if (!currentOrderData) return;
-    const itemsMsg = currentOrderData.items.map(i => `${i.name} [Size: ${i.size}, Color: ${i.color}] (x${i.qty}) - ₹${i.total}`).join(", ");
-    const msg = `⚡ *NEW ORDER: STYLE ZONE - X*\nRef ID: #${currentOrderData.orderIdRef}\nCustomer: ${currentOrderData.customerName}\nPhone: ${currentOrderData.phone}\nAddress: ${currentOrderData.address}\nItems: ${itemsMsg}\nTotal Amount: ₹${currentOrderData.totalAmount}\nPayment: ${currentOrderData.paymentMode} (${currentOrderData.utr})`;
+    if (!completedOrderReceipt) return;
+    const itemsMsg = completedOrderReceipt.items.map(i => `${i.name} [Size: ${i.size}, Color: ${i.color}] (x${i.qty}) - ₹${i.total}`).join(", ");
+    const msg = `⚡ *NEW ORDER: STYLE ZONE - X*\nRef ID: #${completedOrderReceipt.orderIdRef}\nCustomer: ${completedOrderReceipt.customerName}\nPhone: ${completedOrderReceipt.phone}\nAddress: ${completedOrderReceipt.address}\nItems: ${itemsMsg}\nTotal Amount: ₹${completedOrderReceipt.totalAmount}\nPayment: ${completedOrderReceipt.paymentMode}`;
     window.open(`https://wa.me/918637589429?text=${encodeURIComponent(msg)}`, '_blank');
-    
     setShowInvoice(false);
-    setCart([]);
-    setAppliedCoupon(null);
-    syncCart([]);
-    setIsCartOpen(false);
   };
 
   const formatTimer = (time) => {
-    const hrs = Math.floor(time / 3600);
-    const mins = Math.floor((time % 3600) / 60);
+    const mins = Math.floor(time / 60);
     const secs = time % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handlePinCheck = (pin) => {
@@ -878,7 +888,7 @@ export default function App() {
 
   const getUPIIntentLink = () => {
     const merchantName = "STYLE ZONE X";
-    const note = "Fashion Order Checkout";
+    const note = "Fashion Order";
     return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${finalPayableTotal}&tn=${encodeURIComponent(note)}&cu=INR`;
   };
 
@@ -1069,6 +1079,35 @@ export default function App() {
                           </div>
                         </div>
 
+                        {/* LIVE PAYMENT ALERT RADAR (2-Min Verification Alert for Admin) */}
+                        {orders.filter(o => o.paymentStatus?.includes("2 Min Timer") || o.status?.includes("Awaiting")).length > 0 && (
+                          <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-2 animate-pulse">
+                            <h4 className="text-xs font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                              🔔 LIVE PAYMENT ALERT! Customer Online (Waiting 2 Min Verification)
+                            </h4>
+                            {orders.filter(o => o.paymentStatus?.includes("2 Min Timer") || o.status?.includes("Awaiting")).map(pendingOrd => (
+                              <div key={pendingOrd.id} className="p-3 bg-white border border-amber-200 rounded-xl flex items-center justify-between text-xs">
+                                <div>
+                                  <p className="font-black text-zinc-900">{pendingOrd.customerName} - ₹{pendingOrd.totalAmount}</p>
+                                  <p className="text-[10px] text-zinc-500 font-bold">{pendingOrd.phone} | Ref: #{pendingOrd.orderIdRef}</p>
+                                </div>
+                                <button 
+                                  onClick={async () => {
+                                    await updateDoc(doc(db, "orders", pendingOrd.id), {
+                                      paymentStatus: "Paid & Verified ✅",
+                                      status: "Confirmed 📦"
+                                    });
+                                    showToastMessage("Order approved! Customer screen auto-confirmed.");
+                                  }}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow"
+                                >
+                                  ✓ Confirm Payment Received
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         {/* Standardized Coupon Deployment Section */}
                         <div className="p-4 bg-zinc-50 rounded-2xl border space-y-2">
                           <h4 className="text-xs font-black uppercase tracking-wider">🏷️ Deploy Standardized Coupon</h4>
@@ -1084,7 +1123,7 @@ export default function App() {
                           </form>
                         </div>
 
-                        {/* Low Stock Radar */}
+                        {/* Critical Low Stock Radar */}
                         <div className="p-4 bg-zinc-50 rounded-2xl border space-y-2">
                           <h4 className="text-xs font-black text-rose-600 uppercase tracking-wider">⚠️ Critical Inventory Alert (&lt; 5 Units)</h4>
                           <div className="space-y-1.5 max-h-40 overflow-y-auto">
@@ -1219,7 +1258,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Orders Room */}
+                    {/* Orders Room with Instant Live Approval */}
                     {adminTab === "orders" && (
                       <div className="space-y-3 max-h-[65vh] overflow-y-auto">
                         {orders.map(ord => (
@@ -1230,8 +1269,7 @@ export default function App() {
                             </div>
                             <p><b>Buyer:</b> {ord.customerName} ({ord.phone})</p>
                             <p className="text-zinc-500"><b>Address:</b> {ord.address}</p>
-                            <p className="text-zinc-700 font-bold"><b>Payment:</b> {ord.paymentMode} | Ref/UTR: <span className="font-mono bg-white px-1.5 py-0.5 rounded border">{ord.utr}</span></p>
-                            <p className="text-zinc-700"><b>Status:</b> <span className="font-black">{ord.paymentStatus}</span></p>
+                            <p className="text-zinc-700 font-bold"><b>Payment:</b> {ord.paymentMode} - <span className="text-emerald-700">{ord.paymentStatus}</span></p>
                             
                             <div className="bg-white p-2 rounded-xl border space-y-1">
                               {ord.items?.map((it, idx) => (
@@ -1242,7 +1280,10 @@ export default function App() {
                             <div className="flex justify-between items-center pt-2">
                               <select 
                                 value={ord.status} 
-                                onChange={(e) => updateOrderStatus(ord.id, e.target.value)}
+                                onChange={async (e) => {
+                                  await updateDoc(doc(db, "orders", ord.id), { status: e.target.value });
+                                  showToastMessage("Status updated!");
+                                }}
                                 className="p-1.5 border rounded-xl bg-white font-black text-[10px]"
                               >
                                 <option value="Confirmed 📦">Confirmed 📦</option>
@@ -1253,15 +1294,18 @@ export default function App() {
                                 <option value="Cancelled ❌">Cancelled ❌</option>
                               </select>
 
-                              {ord.paymentStatus?.includes("Awaiting") && (
+                              {ord.paymentStatus?.includes("Timer") && (
                                 <button 
                                   onClick={async () => {
-                                    await updateDoc(doc(db, "orders", ord.id), { paymentStatus: "Paid & Verified ✅" });
-                                    showToastMessage("Payment marked as verified!");
+                                    await updateDoc(doc(db, "orders", ord.id), { 
+                                      paymentStatus: "Paid & Verified ✅",
+                                      status: "Confirmed 📦"
+                                    });
+                                    showToastMessage("Payment Approved! Customer notified.");
                                   }}
                                   className="px-2.5 py-1.5 bg-emerald-600 text-white rounded-xl font-black text-[10px]"
                                 >
-                                  ✓ Confirm Payment
+                                  ✓ Approve UPI Payment
                                 </button>
                               )}
                               
@@ -1370,17 +1414,17 @@ export default function App() {
                   <div className="px-4 mb-4 space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
                       <div className="flex items-center gap-2">
-                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Filter Price:</span>
+                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Price:</span>
                         <select 
                           value={priceFilter} 
                           onChange={(e) => setPriceFilter(e.target.value)}
                           className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
                         >
-                          <option value="All">All Prices</option>
-                          <option value="under500">Under ₹500</option>
-                          <option value="500-1000">₹500 - ₹1,000</option>
-                          <option value="1000-2000">₹1,000 - ₹2,000</option>
-                          <option value="above2000">₹2,000+</option>
+                          <option value="All">All</option>
+                          <option value="under500">&lt; ₹500</option>
+                          <option value="500-1000">₹500 - ₹1K</option>
+                          <option value="1000-2000">₹1K - ₹2K</option>
+                          <option value="above2000">₹2K+</option>
                         </select>
                       </div>
 
@@ -1391,7 +1435,7 @@ export default function App() {
                           onChange={(e) => setSizeFilter(e.target.value)}
                           className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
                         >
-                          <option value="All">All Sizes</option>
+                          <option value="All">All</option>
                           {APPAREL_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
                           {FOOTWEAR_SIZES_ADULT.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
@@ -1404,11 +1448,11 @@ export default function App() {
                           onChange={(e) => setSortBy(e.target.value)}
                           className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
                         >
-                          <option value="recommended">Featured Picks</option>
-                          <option value="newest">New Arrivals</option>
-                          <option value="priceLow">Price: Low to High</option>
-                          <option value="priceHigh">Price: High to Low</option>
-                          <option value="discount">Biggest Discount</option>
+                          <option value="recommended">Featured</option>
+                          <option value="newest">Newest</option>
+                          <option value="priceLow">Price: Low</option>
+                          <option value="priceHigh">Price: High</option>
+                          <option value="discount">Discount</option>
                         </select>
                       </div>
                     </div>
@@ -1430,8 +1474,8 @@ export default function App() {
                       {filtered.length === 0 ? (
                         <div className="col-span-full text-center py-16 bg-white rounded-3xl border border-dashed p-6 space-y-2">
                           <span className="text-4xl block">🔍</span>
-                          <h4 className="font-black text-sm">No Fashion Pieces Match Your Filter</h4>
-                          <p className="text-xs text-zinc-400 font-bold">Try adjusting price, size, or department criteria.</p>
+                          <h4 className="font-black text-sm">No Fashion Pieces Found</h4>
+                          <p className="text-xs text-zinc-400 font-bold">Try adjusting filters.</p>
                         </div>
                       ) : (
                         filtered.map(p => {
@@ -1524,7 +1568,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Customer's OWN Orders History */}
+                  {/* Orders History with Cancel & 7-Day Return */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY ORDERS ({orders.length})</h4>
                     {orders.length === 0 ? (
@@ -1543,7 +1587,7 @@ export default function App() {
                             <span className="text-sm font-black">Total: ₹{o.totalAmount}</span>
                             <div className="flex gap-2">
                               {o.status.includes("Confirmed") && (
-                                <button onClick={() => handleCancelOrder(o)} className="text-rose-600 underline text-[10px]">Cancel</button>
+                                <button onClick={() => handleCancelOrder(o)} className="text-rose-600 underline text-[10px]">Cancel & Restore</button>
                               )}
                               {o.status.includes("Delivered") && (
                                 <button onClick={() => handleReturnOrder(o)} className="text-blue-600 underline text-[10px]">7-Day Return</button>
@@ -1567,7 +1611,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* FULL SCREEN FASHION PRODUCT DETAIL MODAL */}
+      {/* FULL SCREEN PRODUCT DETAILS MODAL */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-zinc-900 flex flex-col justify-between animate-fadeIn">
           <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm">
@@ -1626,6 +1670,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Size Selector */}
             {selectedProduct.availableSizes && selectedProduct.availableSizes.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <div className="flex justify-between items-center">
@@ -1646,6 +1691,7 @@ export default function App() {
               </div>
             )}
 
+            {/* Color Palette Selector */}
             {selectedProduct.availableColors && selectedProduct.availableColors.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <span className="text-xs font-black uppercase tracking-wider">SELECT COLOR</span>
@@ -1689,7 +1735,7 @@ export default function App() {
               <p className="text-xs text-zinc-600 leading-relaxed pt-2">{selectedProduct.specifications}</p>
             </div>
 
-            {/* Reviews Stream */}
+            {/* Verified Reviews Stream */}
             <div className="border-t pt-4 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-black uppercase tracking-wider">REVIEWS ({productReviews.length})</span>
@@ -1829,23 +1875,10 @@ export default function App() {
               </div>
 
               {paymentType === "UPI" && (
-                <div className="p-3 bg-orange-50 border border-orange-200 rounded-2xl space-y-2">
-                  <a 
-                    href={getUPIIntentLink()} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="block py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-center rounded-xl font-black text-xs uppercase shadow"
-                  >
-                    🚀 Click to Pay ₹{finalPayableTotal} via GPay/PhonePe
-                  </a>
-                  <input 
-                    placeholder="Enter 12-Digit UPI Ref / UTR No. *"
-                    value={userUtrInput}
-                    onChange={(e) => setUserUtrInput(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-mono font-bold"
-                  />
-                  <p className="text-[10px] text-zinc-500 font-semibold text-center leading-tight">
-                    Submit the transaction reference number to lock your inventory piece.
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-1 text-center">
+                  <p className="text-xs font-black text-emerald-900">⚡ Instant 2-Minute UPI Verification</p>
+                  <p className="text-[10px] text-emerald-700 font-bold leading-tight">
+                    Confirm karte hi UPI app khulega. Payment hote hi 2 min me admin verify karke instant confirm karega!
                   </p>
                 </div>
               )}
@@ -1854,29 +1887,74 @@ export default function App() {
                 onClick={handleCheckoutInit}
                 className="w-full py-3.5 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl"
               >
-                Confirm Order (₹{finalPayableTotal}) →
+                Confirm & Pay (₹{finalPayableTotal}) →
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Invoice Modal */}
-      {showInvoice && currentOrderData && (
+      {/* 2-MINUTE CUSTOMER VERIFICATION POPUP (NO UTR MANUAL INPUT) */}
+      {activePaymentOrder && (
+        <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-center text-zinc-900 shadow-2xl">
+            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-2xl mx-auto animate-pulse">
+              ⏳
+            </div>
+            
+            <h3 className="text-lg font-black font-serif">Verifying Your Payment</h3>
+            <p className="text-xs text-zinc-500 font-bold leading-relaxed">
+              We have opened your UPI app. Please complete payment of <b>₹{activePaymentOrder.totalAmount}</b>.
+            </p>
+
+            <div className="p-3 bg-zinc-100 rounded-2xl font-mono text-xl font-black text-amber-600 tracking-wider">
+              {formatTimer(verificationCountdown)}
+            </div>
+
+            <p className="text-[11px] text-zinc-400 font-semibold">
+              Admin is actively monitoring incoming UPI transfer. Your screen will auto-refresh as soon as it is confirmed.
+            </p>
+
+            <div className="space-y-2 pt-2 border-t">
+              <a 
+                href={getUPIIntentLink()} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="block py-2.5 bg-emerald-600 text-white rounded-xl font-black text-xs uppercase shadow"
+              >
+                Re-open UPI App (GPay/PhonePe)
+              </a>
+              <button 
+                onClick={() => {
+                  if (window.confirm("Close verification window? You can view order status under Account tab.")) {
+                    setActivePaymentOrder(null);
+                  }
+                }}
+                className="text-xs text-zinc-400 font-bold underline"
+              >
+                Close & Check in Orders
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Modal for Confirmed Orders */}
+      {showInvoice && completedOrderReceipt && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-xs font-bold text-zinc-900">
             <div className="text-center border-b pb-2">
               <h3 className="font-serif font-black text-lg">{BRAND_NAME}</h3>
               <p className="text-[9px] text-zinc-400 uppercase tracking-widest">{BRAND_TAGLINE}</p>
             </div>
-            <p>Order Placed Successfully! Ready for shipment.</p>
+            <p className="text-emerald-700 font-black text-center text-sm">🎉 Order Confirmed & Ready For Dispatch!</p>
             <div className="p-3 bg-zinc-50 rounded-xl space-y-1">
-              <p>Total: ₹{currentOrderData.totalAmount}</p>
-              <p>Payment: {currentOrderData.paymentMode}</p>
-              <p>Reference: {currentOrderData.utr}</p>
+              <p>Order Ref: #{completedOrderReceipt.orderIdRef}</p>
+              <p>Total Paid: ₹{completedOrderReceipt.totalAmount}</p>
+              <p>Mode: {completedOrderReceipt.paymentMode}</p>
             </div>
             <button onClick={sendWhatsAppNotification} className="w-full py-3 bg-zinc-950 text-white rounded-xl font-black uppercase">
-              Send Confirmation to WhatsApp 💬
+              Send Invoice to WhatsApp 💬
             </button>
           </div>
         </div>
@@ -1905,6 +1983,9 @@ export default function App() {
             <div className="space-y-2">
               <a href="https://wa.me/918637589429?text=Hi%20Style%20Zone%20X%20Support" target="_blank" rel="noreferrer" className="block p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-center font-black">
                 Chat on WhatsApp (+91 8637589429)
+              </a>
+              <a href="mailto:stylezone.x0@gmail.com" className="block p-3 bg-blue-50 text-blue-800 border border-blue-200 rounded-xl text-center font-black">
+                Email: stylezone.x0@gmail.com
               </a>
               <a href="tel:+918637589429" className="block p-3 bg-zinc-50 text-zinc-800 border rounded-xl text-center font-black">
                 Call Direct Concierge

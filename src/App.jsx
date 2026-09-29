@@ -41,9 +41,9 @@ const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Brand Attributes
+// Brand Attributes & Styling Directives
 const BRAND_NAME = "STYLE ZONE - X";
-const BRAND_TAGLINE = "Define Your Style.";
+const BRAND_TAGLINE = "DEFINE YOUR STYLE.";
 const MY_UPI_ID = "8637589429-3@ybl"; 
 const ALLOWED_PINS = ["731204", "731240", "731215", "731224", "731236", "731214", "700001", "700019"];
 
@@ -86,7 +86,6 @@ const FASHION_COLLECTIONS_MAP = {
   ]
 };
 
-// Expanded Fashion Colors
 const FASHION_COLORS = [
   "Black", "White", "Navy Blue", "Olive Green", "Beige", "Maroon", "Charcoal Grey",
   "Pink", "Baby Pink", "Lavender", "Sky Blue", "Mint Green", "Peach", "Coral", "Wine", "Mustard Yellow", "Rust"
@@ -109,7 +108,6 @@ export default function App() {
     { code: "STYLE20", discountType: "percentage", discountValue: 20, minOrder: 1499 }
   ]);
   const [user, setUser] = useState(null);
-
   const [isProductsLoading, setIsProductsLoading] = useState(true);
 
   // Admin Access Control
@@ -118,19 +116,22 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("shop"); 
   const [adminTab, setAdminTab] = useState("dashboard"); 
 
+  // Modals & Navigation
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [search, setSearch] = useState("");
   const [activeDepartment, setActiveDepartment] = useState("All");
   const [activeCollection, setActiveCollection] = useState("All");
   
+  // Refined Filter & Sort States
   const [priceFilter, setPriceFilter] = useState("All");
   const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
 
-  // 2-Minute Verification Modal & States
+  // 2-Minute Verification & Checkout States
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [activePaymentOrder, setActivePaymentOrder] = useState(null);
   const [verificationCountdown, setVerificationCountdown] = useState(120);
@@ -154,7 +155,6 @@ export default function App() {
 
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
-
   const [pinCheckInput, setPinCheckInput] = useState("");
   const [pinCheckMsg, setPinCheckMsg] = useState(null);
 
@@ -167,7 +167,6 @@ export default function App() {
   const [adminDeptFilter, setAdminDeptFilter] = useState("All");
   const [editingProduct, setEditingProduct] = useState(null);
 
-  // Customer Profile & Logistics
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
     gender: 'Male',
@@ -178,12 +177,13 @@ export default function App() {
     pin: '' 
   });
 
+  // Hero Banners
   const [heroSlides] = useState([
     {
       id: 1,
       badge: "AUTUMN / WINTER '26",
-      title: "OVERSIZED STREETWEAR EDIT",
-      subtitle: "Heavyweight Cotton Tees, Cargo Pants & Denim",
+      title: "OVERSIZED STREETWEAR",
+      subtitle: "Heavyweight Cotton Tees, Cargo Pants & Denim Drops",
       btnText: "SHOP MEN",
       dept: "Men",
       img: "https://images.unsplash.com/photo-1509631179647-0177331693ae?w=1200&q=80"
@@ -191,8 +191,8 @@ export default function App() {
     {
       id: 2,
       badge: "FESTIVE COUTURE",
-      title: "ELEGANT ETHNIC & DRESSES",
-      subtitle: "Handcrafted Kurtas, Sarees & Flowy Silhouettes",
+      title: "ETHNIC & FLOWY DRESSES",
+      subtitle: "Handcrafted Kurtas, Sarees & Contemporary Silhouettes",
       btnText: "SHOP WOMEN",
       dept: "Women",
       img: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1200&q=80"
@@ -200,8 +200,8 @@ export default function App() {
     {
       id: 3,
       badge: "KICKS & DROPS",
-      title: "CHUNKY SNEAKERS & LOAFERS",
-      subtitle: "Comfort Meets Hype. Footwear Built For Daily Motion",
+      title: "CHUNKY SNEAKERS & KICKS",
+      subtitle: "Comfort Meets Street Hype. Built For Daily Motion",
       btnText: "SHOP FOOTWEAR",
       dept: "Footwear",
       img: "https://images.unsplash.com/photo-1552346154-21d32810aba3?w=1200&q=80"
@@ -310,7 +310,7 @@ export default function App() {
     }
   };
 
-  // Auth & General Listeners
+  // Auth & Real-time Listeners
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
@@ -329,7 +329,7 @@ export default function App() {
       }
     });
 
-    const timer = setInterval(() => setCurrentSlide((prev) => (prev + 1) % heroSlides.length), 5000);
+    const timer = setInterval(() => setCurrentSlide((prev) => (prev + 1) % heroSlides.length), 5500);
     const flashTimer = setInterval(() => setFlashTime(prev => (prev > 0 ? prev - 1 : 14400)), 1000);
     
     const qProd = query(collection(db, "products"), orderBy("name"));
@@ -494,7 +494,7 @@ export default function App() {
       }];
     }
     syncCart(updatedCart);
-    showToastMessage(`Added ${quantity} item(s) to bag! 🛍️`);
+    showToastMessage(`Added ${quantity} piece to bag! 🛍️`);
   };
 
   const updateCartQty = (itemKey, delta) => {
@@ -548,7 +548,7 @@ export default function App() {
     recognition.lang = 'en-IN';
     recognition.onstart = () => {
       setIsListening(true);
-      showToastMessage("Listening for styles or shoes... 🎙️");
+      showToastMessage("Listening for styles or kicks... 🎙️");
     };
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
@@ -573,7 +573,6 @@ export default function App() {
     }
   };
 
-  // Cancel Order & Restore Stock via Transaction
   const handleCancelOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -599,7 +598,6 @@ export default function App() {
     }
   };
 
-  // 7-Day Return / Exchange System
   const handleReturnOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -737,7 +735,6 @@ export default function App() {
     }
   };
 
-  // Admin Notification Creator
   const handleCreateNotification = async (e) => {
     e.preventDefault();
     if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
@@ -752,13 +749,12 @@ export default function App() {
         createdAt: new Date().toISOString()
       });
       e.target.reset();
-      showToastMessage("Broadcast alert dispatched to customers! 📢");
+      showToastMessage("Broadcast alert dispatched! 📢");
     } catch (err) {
       showToastMessage("Error sending alert", "error");
     }
   };
 
-  // Admin Delete Order
   const handleDeleteOrder = async (orderId) => {
     if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
     if (window.confirm("Permanently delete this order record? This cannot be undone.")) {
@@ -771,7 +767,6 @@ export default function App() {
     }
   };
 
-  // Admin Save Full Product Edit
   const handleSaveProductEdit = async (e) => {
     e.preventDefault();
     if (!isAdmin || !editingProduct) return;
@@ -838,7 +833,6 @@ export default function App() {
     return matchesSearch && matchesDept;
   });
 
-  // Atomic Stock Reservation + No-UTR 2-Minute Flow
   const handleCheckoutInit = async () => {
     if (!user || user.isAnonymous) {
       return showToastMessage("Please login with Google to complete your order!", "error");
@@ -932,9 +926,10 @@ export default function App() {
   };
 
   const formatTimer = (time) => {
-    const mins = Math.floor(time / 60);
+    const hrs = Math.floor(time / 3600);
+    const mins = Math.floor((time % 3600) / 60);
     const secs = time % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handlePinCheck = (pin) => {
@@ -959,11 +954,11 @@ export default function App() {
   const productReviews = selectedProduct ? reviews.filter(r => r.productId === selectedProduct.id) : [];
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-stone-50/50 text-zinc-900'} pb-32 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
+    <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-[#FAFAF9] text-zinc-900'} pb-28 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
       
       {/* Toast Notification Container */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-xs flex items-center gap-2.5 animate-bounce ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-zinc-900 text-white'}`}>
+        <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-2xl shadow-2xl font-black text-xs flex items-center gap-2.5 animate-bounce ${toast.type === 'error' ? 'bg-rose-600 text-white' : 'bg-zinc-950 text-white'}`}>
           <span>{toast.type === 'error' ? '⚠️' : '⚡'}</span>
           <span>{toast.msg}</span>
         </div>
@@ -972,67 +967,99 @@ export default function App() {
       {/* Main Responsive Container */}
       <div className="w-full max-w-7xl mx-auto">
         
-        {/* Navigation Bar */}
-        <header className="p-3.5 bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full max-w-md md:max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4 cursor-pointer" onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); setActiveCollection("All"); }}>
-            <div className="w-9 h-9 bg-zinc-950 text-white rounded-xl flex items-center justify-center font-black tracking-tighter text-lg shadow-sm">
-              X
+        {/* LUXURY DOUBLE-DECKER HEADER */}
+        <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full">
+          {/* Row 1: Brand & Top Utilities */}
+          <div className="px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
+            <div 
+              className="flex items-center gap-3 cursor-pointer group" 
+              onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); setActiveCollection("All"); }}
+            >
+              <div className="w-9 h-9 bg-zinc-950 text-white rounded-xl flex items-center justify-center font-black tracking-tighter text-lg shadow-sm group-hover:bg-amber-600 transition-colors">
+                X
+              </div>
+              <div>
+                <h1 className="text-xl md:text-2xl font-black tracking-widest uppercase leading-none font-serif text-zinc-950">
+                  {BRAND_NAME}
+                </h1>
+                <p className="text-[8px] md:text-[9px] uppercase tracking-[0.25em] text-zinc-400 font-black mt-1">
+                  {BRAND_TAGLINE}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl md:text-2xl font-black tracking-widest uppercase leading-none font-serif">
-                {BRAND_NAME}
-              </h1>
-              <p className="text-[9px] uppercase tracking-widest text-zinc-400 font-black mt-0.5">{BRAND_TAGLINE}</p>
+
+            <div className="flex items-center gap-2">
+              {!isAdmin && !isAdminUrl && (
+                <>
+                  <button 
+                    onClick={() => setIsNotifOpen(true)} 
+                    className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all active:scale-95" 
+                    title="Notifications"
+                  >
+                    🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-amber-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{notifications.length}</span>}
+                  </button>
+                  <button 
+                    onClick={() => setIsWishlistOpen(true)} 
+                    className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all active:scale-95" 
+                    title="Wishlist"
+                  >
+                    ❤️ {wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-zinc-950 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{wishlist.length}</span>}
+                  </button>
+                </>
+              )}
+              {!user && !isAdmin && !isAdminUrl && (
+                <button onClick={handleGoogleLogin} className="bg-zinc-950 hover:bg-zinc-800 text-white text-[11px] font-black px-4 py-2 rounded-xl shadow transition-all active:scale-95">
+                  Sign In
+                </button>
+              )}
+              {user && !isAdmin && !isAdminUrl && (
+                <button onClick={() => setActiveTab("account")} className="p-2 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs" title="Profile">
+                  👤
+                </button>
+              )}
+              <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs transition-all">{darkMode ? '☀️' : '🌙'}</button>
             </div>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6 text-xs font-black uppercase tracking-wider text-zinc-600">
-            {FASHION_DEPARTMENTS.map(dept => (
-              <span 
-                key={dept} 
-                onClick={() => { setActiveDepartment(dept); setActiveCollection("All"); setActiveTab("shop"); }}
-                className={`cursor-pointer hover:text-black transition-colors ${activeDepartment === dept ? 'text-black border-b-2 border-black pb-1' : ''}`}
-              >
-                {dept}
-              </span>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            {!isAdmin && !isAdminUrl && (
-              <>
-                <button onClick={() => setIsNotifOpen(true)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all" title="Notifications">
-                  🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-zinc-950 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{notifications.length}</span>}
+          {/* Row 2: Scrollable Fashion Department Navigation */}
+          {!isAdminUrl && (
+            <div className="px-4 py-2 border-t border-zinc-100 overflow-x-auto no-scrollbar flex items-center gap-3">
+              {FASHION_DEPARTMENTS.map(dept => (
+                <button
+                  key={dept}
+                  onClick={() => { setActiveDepartment(dept); setActiveCollection("All"); setActiveTab("shop"); }}
+                  className={`text-xs uppercase font-black tracking-wider px-3 py-1.5 rounded-full transition-all whitespace-nowrap ${
+                    activeDepartment === dept 
+                      ? 'bg-zinc-950 text-white shadow-sm' 
+                      : 'text-zinc-500 hover:text-zinc-900 bg-zinc-100/70'
+                  }`}
+                >
+                  {dept}
                 </button>
-                <button onClick={() => setIsWishlistOpen(true)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all" title="Wishlist">
-                  ❤️ {wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-zinc-950 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{wishlist.length}</span>}
-                </button>
-              </>
-            )}
-            {!user && !isAdmin && !isAdminUrl && (
-              <button onClick={handleGoogleLogin} className="bg-zinc-950 hover:bg-zinc-800 text-white text-[11px] font-black px-4 py-2 rounded-xl shadow transition-all">
-                Login
-              </button>
-            )}
-            <button onClick={() => setDarkMode(!darkMode)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs transition-all">{darkMode ? '☀️' : '🌙'}</button>
-          </div>
+              ))}
+            </div>
+          )}
         </header>
 
         {/* Fashion Search Bar */}
         {!isAdmin && !isAdminUrl && activeTab === "shop" && (
-          <div className="sticky top-[68px] z-30 px-4 py-2.5 bg-white/90 backdrop-blur-sm border-b border-zinc-100 w-full max-w-md md:max-w-7xl mx-auto my-1 relative">
+          <div className="px-4 py-2.5 bg-white/90 backdrop-blur-sm border-b border-zinc-100 w-full max-w-7xl mx-auto relative">
             <div className="flex items-center gap-2">
-              <input 
-                type="text" placeholder="Search oversized t-shirts, sneakers, dresses, kurtis..." 
-                value={search}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                className="w-full p-3 bg-zinc-50 rounded-2xl border border-zinc-200 text-xs md:text-sm font-semibold text-zinc-900 focus:outline-none focus:border-zinc-950 transition-all"
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <div className="relative flex-1">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="Search dresses, oversized tees, kicks..." 
+                  value={search}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                  className="w-full pl-9 pr-3 py-2.5 bg-zinc-50 rounded-2xl border border-zinc-200 text-xs md:text-sm font-semibold text-zinc-900 focus:outline-none focus:border-zinc-950 transition-all shadow-inner"
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
               <button 
                 onClick={startVoiceSearch} 
-                className={`p-3 rounded-2xl border text-sm transition-all shadow-sm ${isListening ? 'bg-rose-600 text-white animate-pulse' : 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200'}`}
+                className={`p-2.5 px-3 rounded-2xl border text-sm transition-all shadow-sm ${isListening ? 'bg-rose-600 text-white animate-pulse' : 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200'}`}
                 title="Voice Search"
               >
                 🎙️
@@ -1143,7 +1170,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Broadcast Alerts Control (Admin Notification Sender) */}
+                        {/* Broadcast Alerts Control */}
                         <div className="p-4 bg-zinc-50 rounded-2xl border space-y-3">
                           <h4 className="text-xs font-black uppercase tracking-wider">📢 Broadcast Customer Alert / Notification</h4>
                           <form onSubmit={handleCreateNotification} className="space-y-2">
@@ -1225,7 +1252,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Add Product Form with Expanded Colors */}
+                    {/* Add Product Form */}
                     {adminTab === "add-item" && (
                       <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-xs font-bold">
                         <div className="flex justify-between items-center border-b pb-2">
@@ -1276,9 +1303,9 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Expanded Color Palette */}
+                        {/* Color Palette */}
                         <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
-                          <p className="text-[10px] font-black uppercase text-zinc-500">Color Palette (Pink, Baby Pink, Lavender, etc.):</p>
+                          <p className="text-[10px] font-black uppercase text-zinc-500">Color Palette:</p>
                           <div className="flex flex-wrap gap-2 text-[10px]">
                             {FASHION_COLORS.map(col => (
                               <label key={col} className="flex items-center gap-1 bg-white px-2 py-1 rounded border cursor-pointer">
@@ -1309,7 +1336,7 @@ export default function App() {
                       </form>
                     )}
 
-                    {/* Stock Grid Manager with Edit Modal Trigger */}
+                    {/* Stock Grid Manager */}
                     {adminTab === "manage-items" && (
                       <div className="space-y-3">
                         <div className="flex gap-2">
@@ -1347,7 +1374,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Orders Room with Instant Live Approval & Order Deletion */}
+                    {/* Orders Room */}
                     {adminTab === "orders" && (
                       <div className="space-y-3 max-h-[65vh] overflow-y-auto">
                         {orders.map(ord => (
@@ -1416,19 +1443,25 @@ export default function App() {
             <>
               {activeTab === "shop" && (
                 <>
-                  {/* Hero Carousel Section */}
-                  <div className="px-4 mb-6">
-                    <div className="relative h-64 md:h-96 w-full rounded-3xl overflow-hidden shadow-2xl border border-zinc-200">
+                  {/* CINEMATIC HERO BANNER */}
+                  <div className="px-4 my-3">
+                    <div className="relative h-72 md:h-[400px] w-full rounded-3xl overflow-hidden shadow-xl border border-zinc-200">
                       {heroSlides.map((s, idx) => (
                         <div key={s.id} className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
                           <img src={s.img} alt={s.title} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent p-6 md:p-10 flex flex-col justify-end text-white">
-                            <span className="text-[10px] uppercase tracking-widest font-black bg-white/20 px-3 py-1 rounded-full backdrop-blur-md w-fit mb-2">{s.badge}</span>
-                            <h2 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-tight font-serif">{s.title}</h2>
-                            <p className="text-xs md:text-sm text-zinc-300 font-medium mb-4">{s.subtitle}</p>
+                          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-transparent p-6 md:p-10 flex flex-col justify-center text-white">
+                            <span className="text-[9px] uppercase tracking-[0.2em] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full backdrop-blur-md w-fit mb-2">
+                              {s.badge}
+                            </span>
+                            <h2 className="text-2xl md:text-4xl font-black tracking-tight uppercase leading-tight font-serif max-w-sm">
+                              {s.title}
+                            </h2>
+                            <p className="text-xs md:text-sm text-zinc-300 font-medium mb-4 max-w-xs leading-relaxed">
+                              {s.subtitle}
+                            </p>
                             <button 
                               onClick={() => { setActiveDepartment(s.dept); setActiveCollection("All"); }}
-                              className="w-fit bg-white text-zinc-950 px-6 py-2.5 rounded-full font-black text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all shadow-lg"
+                              className="w-fit bg-white text-zinc-950 px-6 py-2.5 rounded-full font-black text-xs uppercase tracking-wider hover:bg-zinc-200 transition-all shadow-lg active:scale-95"
                             >
                               {s.btnText} →
                             </button>
@@ -1438,26 +1471,29 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Flash Sale Countdown Strip */}
-                  <div className="px-4 mb-6">
-                    <div className="bg-zinc-950 text-white p-4 rounded-2xl flex items-center justify-between shadow-xl">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">⚡</span>
+                  {/* FLASH SALE COUNTDOWN STRIP */}
+                  <div className="px-4 mb-4">
+                    <div className="bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 text-white p-4 rounded-3xl flex items-center justify-between shadow-lg border border-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl animate-pulse">⚡</span>
                         <div>
-                          <h4 className="text-xs font-black uppercase tracking-wider">LIMITED FLASH DROP</h4>
-                          <p className="text-[10px] text-zinc-400">Extra 20% OFF on Orders ₹1499+ using code STYLE20</p>
+                          <h4 className="text-xs font-black uppercase tracking-wider text-amber-400">LIMITED FLASH DROP</h4>
+                          <p className="text-[10px] text-zinc-300 font-medium">Extra 20% OFF on Orders ₹1499+ using code STYLE20</p>
                         </div>
                       </div>
-                      <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 font-mono font-black text-xs text-yellow-400">
+                      <div className="bg-white/10 px-3 py-2 rounded-2xl border border-white/10 font-mono font-black text-xs text-yellow-300 tracking-wider">
                         {formatTimer(flashTime)}
                       </div>
                     </div>
                   </div>
 
-                  {/* Shop by Department Circles */}
+                  {/* SHOP BY DEPARTMENT CIRCLES */}
                   <div className="px-4 mb-6">
-                    <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400 mb-3">SHOP BY DEPARTMENT</h3>
-                    <div className="grid grid-cols-4 gap-2.5 text-center">
+                    <div className="flex justify-between items-center mb-3">
+                      <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400">SHOP BY DEPARTMENT</h3>
+                      <span className="text-[10px] font-black uppercase text-zinc-500 cursor-pointer" onClick={() => setActiveDepartment("All")}>View All</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-center">
                       {[
                         { title: "Men", img: "https://images.unsplash.com/photo-1516257984-b1b4d707412e?w=300&q=80" },
                         { title: "Women", img: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=300&q=80" },
@@ -1467,24 +1503,28 @@ export default function App() {
                         <div 
                           key={dept.title} 
                           onClick={() => { setActiveDepartment(dept.title); setActiveCollection("All"); }}
-                          className={`cursor-pointer group flex flex-col items-center p-2 rounded-2xl border transition-all ${activeDepartment === dept.title ? 'bg-zinc-950 text-white border-zinc-950' : 'bg-white text-zinc-800 border-zinc-200'}`}
+                          className={`cursor-pointer group flex flex-col items-center p-2 rounded-2xl border transition-all ${
+                            activeDepartment === dept.title 
+                              ? 'bg-zinc-950 text-white border-zinc-950 shadow-md' 
+                              : 'bg-white text-zinc-800 border-zinc-200/80 hover:border-zinc-400'
+                          }`}
                         >
-                          <div className="w-14 h-14 md:w-20 md:h-20 rounded-full overflow-hidden mb-1.5 border">
-                            <img src={dept.img} alt={dept.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                          <div className="w-14 h-14 md:w-20 md:h-20 rounded-full overflow-hidden mb-1.5 border border-zinc-200">
+                            <img src={dept.img} alt={dept.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
                           </div>
-                          <span className="text-xs font-black uppercase tracking-wider">{dept.title}</span>
+                          <span className="text-[11px] font-black uppercase tracking-wider">{dept.title}</span>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {/* Collection Sub-Category Strip */}
+                  {/* Sub-Collection Strip */}
                   {activeDepartment !== "All" && FASHION_COLLECTIONS_MAP[activeDepartment] && (
-                    <div className="px-4 mb-6">
-                      <div className="p-3 bg-zinc-100 rounded-2xl flex gap-2 overflow-x-auto no-scrollbar">
+                    <div className="px-4 mb-4">
+                      <div className="p-2.5 bg-zinc-100 rounded-2xl flex gap-2 overflow-x-auto no-scrollbar">
                         <button 
                           onClick={() => setActiveCollection("All")}
-                          className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all ${activeCollection === "All" ? 'bg-zinc-950 text-white' : 'bg-white text-zinc-800'}`}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all ${activeCollection === "All" ? 'bg-zinc-950 text-white shadow-sm' : 'bg-white text-zinc-800'}`}
                         >
                           All {activeDepartment}
                         </button>
@@ -1492,7 +1532,7 @@ export default function App() {
                           <button 
                             key={coll.name} 
                             onClick={() => setActiveCollection(coll.name)}
-                            className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 ${activeCollection === coll.name ? 'bg-zinc-950 text-white' : 'bg-white text-zinc-800'}`}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 ${activeCollection === coll.name ? 'bg-zinc-950 text-white shadow-sm' : 'bg-white text-zinc-800'}`}
                           >
                             <span>{coll.icon}</span>
                             <span>{coll.name}</span>
@@ -1502,139 +1542,183 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Advanced Multi-Filters & Sort Bar */}
-                  <div className="px-4 mb-4 space-y-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold bg-white p-3 rounded-2xl border border-zinc-200 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Price:</span>
-                        <select 
-                          value={priceFilter} 
-                          onChange={(e) => setPriceFilter(e.target.value)}
-                          className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
-                        >
-                          <option value="All">All</option>
-                          <option value="under500">&lt; ₹500</option>
-                          <option value="500-1000">₹500 - ₹1K</option>
-                          <option value="1000-2000">₹1K - ₹2K</option>
-                          <option value="above2000">₹2K+</option>
-                        </select>
-                      </div>
+                  {/* FILTER BAR WITH BOTTOM SHEET TOGGLE */}
+                  <div className="px-4 mb-3">
+                    <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar py-1">
+                      <button 
+                        onClick={() => setIsFilterDrawerOpen(true)}
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black shrink-0 active:scale-95 shadow"
+                      >
+                        <span>☰</span>
+                        <span>Filters</span>
+                      </button>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Size:</span>
-                        <select 
-                          value={sizeFilter} 
-                          onChange={(e) => setSizeFilter(e.target.value)}
-                          className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
-                        >
-                          <option value="All">All</option>
-                          {APPAREL_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                          {FOOTWEAR_SIZES_ADULT.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-zinc-400 uppercase tracking-widest text-[10px]">Sort:</span>
+                      <div className="flex items-center gap-1.5 shrink-0 text-xs font-bold">
                         <select 
                           value={sortBy} 
                           onChange={(e) => setSortBy(e.target.value)}
-                          className="p-1.5 border rounded-lg bg-zinc-50 text-[11px] font-black"
+                          className="p-2 border border-zinc-200 rounded-xl bg-white text-xs font-bold text-zinc-800 focus:outline-none"
                         >
-                          <option value="recommended">Featured</option>
-                          <option value="newest">Newest</option>
-                          <option value="priceLow">Price: Low</option>
-                          <option value="priceHigh">Price: High</option>
-                          <option value="discount">Discount</option>
+                          <option value="recommended">Featured Picks</option>
+                          <option value="newest">New Arrivals</option>
+                          <option value="priceLow">Price: Low to High</option>
+                          <option value="priceHigh">Price: High to Low</option>
+                          <option value="discount">Biggest Discount</option>
+                        </select>
+
+                        <select 
+                          value={sizeFilter} 
+                          onChange={(e) => setSizeFilter(e.target.value)}
+                          className="p-2 border border-zinc-200 rounded-xl bg-white text-xs font-bold text-zinc-800 focus:outline-none"
+                        >
+                          <option value="All">All Sizes</option>
+                          {APPAREL_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                          {FOOTWEAR_SIZES_ADULT.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </div>
                     </div>
                   </div>
 
-                  {/* Product Grid - Full Fit Images No Cut */}
-                  {isProductsLoading ? (
-                    <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {[1,2,3,4].map(idx => (
-                        <div key={idx} className="bg-white rounded-3xl p-3 border animate-pulse space-y-3">
-                          <div className="h-48 bg-zinc-200 rounded-2xl w-full"></div>
-                          <div className="h-4 bg-zinc-200 rounded w-3/4"></div>
-                          <div className="h-4 bg-zinc-200 rounded w-1/2"></div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {filtered.length === 0 ? (
-                        <div className="col-span-full text-center py-16 bg-white rounded-3xl border border-dashed p-6 space-y-2">
-                          <span className="text-4xl block">🔍</span>
-                          <h4 className="font-black text-sm">No Fashion Pieces Found</h4>
-                          <p className="text-xs text-zinc-400 font-bold">Try adjusting filters.</p>
-                        </div>
-                      ) : (
-                        filtered.map(p => {
-                          const finalPrice = getDiscountedPrice(p.price, p.discount);
-                          const isWish = wishlist.find(x => x.id === p.id);
-                          const mainImg = p.images?.[0] || "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600&q=80";
-                          return (
-                            <div key={p.id} className="bg-white rounded-3xl p-3 border border-zinc-200/80 hover:shadow-2xl transition-all duration-300 flex flex-col justify-between group">
-                              <div className="relative h-56 md:h-64 rounded-2xl overflow-hidden bg-stone-100/70 mb-2 cursor-pointer flex items-center justify-center p-1.5" onClick={() => addToRecentlyViewed(p)}>
-                                <img src={mainImg} alt={p.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); toggleWishlist(p); }} 
-                                  className="absolute top-2.5 right-2.5 p-2 bg-white/90 backdrop-blur-sm rounded-full text-xs shadow-md"
+                  {/* 2-COLUMN LUXURY PRODUCT GRID (MOBILE FIRST 4:5 ASPECT RATIO) */}
+                  <div className="px-4 mb-8">
+                    {isProductsLoading ? (
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {[1,2,3,4].map(idx => (
+                          <div key={idx} className="bg-white rounded-2xl p-2.5 border animate-pulse space-y-2">
+                            <div className="aspect-[4/5] bg-zinc-200 rounded-xl w-full"></div>
+                            <div className="h-4 bg-zinc-200 rounded w-3/4"></div>
+                            <div className="h-4 bg-zinc-200 rounded w-1/2"></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {filtered.length === 0 ? (
+                          <div className="col-span-full text-center py-16 bg-white rounded-3xl border border-dashed p-6 space-y-2">
+                            <span className="text-4xl block">🔍</span>
+                            <h4 className="font-black text-sm">No Fashion Pieces Found</h4>
+                            <p className="text-xs text-zinc-400 font-bold">Try adjusting your filters or department.</p>
+                          </div>
+                        ) : (
+                          filtered.map(p => {
+                            const finalPrice = getDiscountedPrice(p.price, p.discount);
+                            const isWish = wishlist.find(x => x.id === p.id);
+                            const mainImg = p.images?.[0] || "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=600&q=80";
+                            return (
+                              <div 
+                                key={p.id} 
+                                className="bg-white rounded-2xl p-2 border border-zinc-200/80 hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative"
+                              >
+                                {/* 4:5 Aspect Frame for Perfect Outfits */}
+                                <div 
+                                  className="relative aspect-[4/5] rounded-xl overflow-hidden bg-stone-100/70 cursor-pointer flex items-center justify-center p-2 mb-2"
+                                  onClick={() => addToRecentlyViewed(p)}
                                 >
-                                  {isWish ? "❤️" : "🤍"}
-                                </button>
-                                {p.discount > 0 && (
-                                  <span className="absolute bottom-2.5 left-2.5 bg-zinc-950 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
-                                    {p.discount}% OFF
-                                  </span>
-                                )}
-                              </div>
+                                  <img 
+                                    src={mainImg} 
+                                    alt={p.name} 
+                                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" 
+                                  />
 
-                              <div className="space-y-1">
-                                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{p.brand || "STYLE ZONE - X"}</p>
-                                <h4 onClick={() => addToRecentlyViewed(p)} className="text-xs font-black text-zinc-900 truncate cursor-pointer hover:underline">{p.name}</h4>
-                                
-                                <div className="flex items-center gap-2 pt-0.5">
-                                  <span className="text-sm font-black text-zinc-950">₹{finalPrice}</span>
-                                  {p.discount > 0 && <span className="text-[10px] text-zinc-400 line-through font-bold">₹{p.price}</span>}
+                                  {/* Discount Pill Top-Left */}
+                                  {p.discount > 0 && (
+                                    <span className="absolute top-2 left-2 bg-rose-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow">
+                                      -{p.discount}%
+                                    </span>
+                                  )}
+
+                                  {/* 36x36px Floating Wishlist Button Top-Right */}
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); toggleWishlist(p); }} 
+                                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/95 backdrop-blur-md flex items-center justify-center text-xs shadow-md active:scale-90 transition-transform"
+                                  >
+                                    {isWish ? "❤️" : "🤍"}
+                                  </button>
+                                </div>
+
+                                {/* Product Typography Hierarchy */}
+                                <div className="space-y-1 px-1">
+                                  <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400 truncate">
+                                    {p.brand || "STYLE ZONE - X"}
+                                  </p>
+                                  <h4 
+                                    onClick={() => addToRecentlyViewed(p)} 
+                                    className="text-xs md:text-sm font-bold text-zinc-900 line-clamp-2 leading-snug cursor-pointer hover:underline"
+                                  >
+                                    {p.name}
+                                  </h4>
+
+                                  {/* Star Rating Strip */}
+                                  <div className="flex items-center gap-1 text-[10px] text-amber-500 font-bold">
+                                    <span>★ 4.8</span>
+                                    <span className="text-zinc-400 font-medium">(24)</span>
+                                  </div>
+
+                                  {/* Price Matrix */}
+                                  <div className="pt-0.5">
+                                    <div className="flex items-baseline gap-1.5 flex-wrap">
+                                      <span className="text-sm md:text-base font-black text-zinc-950">
+                                        ₹{finalPrice}
+                                      </span>
+                                      {p.discount > 0 && (
+                                        <span className="text-[10px] md:text-xs text-zinc-400 line-through font-bold">
+                                          ₹{p.price}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {p.discount > 0 && (
+                                      <p className="text-[9px] text-emerald-600 font-black">
+                                        Save ₹{p.price - finalPrice}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Quick View Button */}
+                                <div className="mt-2.5 pt-1">
+                                  <button 
+                                    onClick={() => addToRecentlyViewed(p)} 
+                                    className="w-full py-2 bg-zinc-100 hover:bg-zinc-950 hover:text-white text-zinc-900 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all active:scale-95"
+                                  >
+                                    Quick View
+                                  </button>
                                 </div>
                               </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-                              <div className="mt-3 flex gap-2">
-                                <button 
-                                  onClick={() => addToRecentlyViewed(p)} 
-                                  className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 font-black text-[10px] uppercase rounded-xl transition-all"
-                                >
-                                  Quick View
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-
-                  {/* Recently Viewed Strip */}
+                  {/* RECENTLY VIEWED CAROUSEL */}
                   {recentlyViewed.length > 0 && (
-                    <div className="mx-4 my-8 p-4 bg-white rounded-3xl border border-zinc-200 shadow-sm space-y-3">
-                      <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">👁️ RECENTLY VIEWED STYLES</h4>
-                      <div className="flex gap-3 overflow-x-auto no-scrollbar">
+                    <div className="mx-4 my-8 p-4 bg-white rounded-3xl border border-zinc-200/80 shadow-sm space-y-3">
+                      <div className="flex justify-between items-center border-b pb-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-zinc-500">
+                          👁️ Recently Viewed
+                        </h4>
+                        <span className="text-[10px] text-zinc-400 font-bold">{recentlyViewed.length} items</span>
+                      </div>
+                      <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
                         {recentlyViewed.map(rv => (
-                          <div key={rv.id} onClick={() => addToRecentlyViewed(rv)} className="w-24 shrink-0 cursor-pointer text-center">
-                            <div className="h-28 w-full rounded-2xl overflow-hidden border mb-1 bg-stone-100/70 p-1 flex items-center justify-center">
-                              <img src={rv.images?.[0]} alt={rv.name} className="w-full h-full object-contain" />
+                          <div 
+                            key={rv.id} 
+                            onClick={() => addToRecentlyViewed(rv)} 
+                            className="w-28 shrink-0 cursor-pointer text-center group"
+                          >
+                            <div className="aspect-[4/5] w-full rounded-2xl overflow-hidden border border-zinc-200 bg-stone-100/70 p-1.5 flex items-center justify-center mb-1 group-hover:border-zinc-950 transition-all">
+                              <img src={rv.images?.[0] || rv.img} alt={rv.name} className="w-full h-full object-contain" />
                             </div>
-                            <p className="text-[10px] font-black truncate">{rv.name}</p>
-                            <p className="text-[10px] font-extrabold text-zinc-900">₹{getDiscountedPrice(rv.price, rv.discount)}</p>
+                            <p className="text-[10px] font-bold truncate text-zinc-800">{rv.name}</p>
+                            <p className="text-[10px] font-black text-zinc-950">₹{getDiscountedPrice(rv.price, rv.discount)}</p>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Customer Storefront Bottom About & Info Section */}
+                  {/* STOREFRONT ABOUT & FOOTER SECTION */}
                   <footer className="mt-12 border-t border-zinc-200/80 bg-white p-6 md:p-10 space-y-6 text-zinc-800">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                       <div className="space-y-2">
@@ -1670,20 +1754,19 @@ export default function App() {
                     </div>
                     <div className="border-t border-zinc-100 pt-4 flex flex-col md:flex-row justify-between items-center text-[10px] text-zinc-400 font-bold gap-2">
                       <span>© {new Date().getFullYear()} STYLE ZONE - X. All rights reserved.</span>
-                      <span>Designed & Developed for Speed & Style.</span>
+                      <span>Designed & Engineered for Speed & Style.</span>
                     </div>
                   </footer>
                 </>
               )}
 
-              {/* Flipkart-Style Account Section */}
+              {/* FLIPKART-INSPIRED ACCOUNT SECTION */}
               {activeTab === "account" && (
                 <div className="p-3 md:p-6 space-y-4 max-w-xl mx-auto pb-10">
-                  {/* Top Profile Card */}
-                  <div className="bg-white p-5 rounded-2xl border border-zinc-200/90 shadow-sm space-y-3">
+                  <div className="bg-white p-5 rounded-3xl border border-zinc-200/90 shadow-sm space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-lg">
+                        <div className="w-12 h-12 rounded-full bg-zinc-950 text-white flex items-center justify-center font-black text-lg">
                           {(custInfo.name || user?.displayName || "S").charAt(0).toUpperCase()}
                         </div>
                         <div>
@@ -1693,7 +1776,7 @@ export default function App() {
                           <p className="text-xs text-zinc-400 font-bold mt-0.5">{user?.email || custInfo.phone || "Guest Shopper"}</p>
                         </div>
                       </div>
-                      <button onClick={() => setShowSupportModal(true)} className="p-2 border border-zinc-200 rounded-xl text-xs font-black flex items-center gap-1">
+                      <button onClick={() => setShowSupportModal(true)} className="p-2 border border-zinc-200 rounded-xl text-xs font-black flex items-center gap-1 active:scale-95">
                         🎧 Help
                       </button>
                     </div>
@@ -1705,7 +1788,7 @@ export default function App() {
                           const elem = document.getElementById("my-orders-scroll-target");
                           if (elem) elem.scrollIntoView({ behavior: 'smooth' });
                         }}
-                        className="p-3 border border-zinc-200 rounded-xl flex items-center gap-2.5 cursor-pointer hover:bg-zinc-50 transition-colors"
+                        className="p-3 border border-zinc-200 rounded-2xl flex items-center gap-2.5 cursor-pointer hover:bg-zinc-50 transition-colors"
                       >
                         <span className="text-xl">📦</span>
                         <div>
@@ -1715,9 +1798,9 @@ export default function App() {
                       </div>
                       <div 
                         onClick={() => setIsWishlistOpen(true)}
-                        className="p-3 border border-zinc-200 rounded-xl flex items-center gap-2.5 cursor-pointer hover:bg-zinc-50 transition-colors"
+                        className="p-3 border border-zinc-200 rounded-2xl flex items-center gap-2.5 cursor-pointer hover:bg-zinc-50 transition-colors"
                       >
-                        <span className="text-xl text-blue-600">💙</span>
+                        <span className="text-xl text-rose-600">❤️</span>
                         <div>
                           <p className="font-black text-xs">Wishlist</p>
                           <p className="text-[10px] text-zinc-400 font-bold">{wishlist.length} Items</p>
@@ -1726,13 +1809,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Profile & Delivery Address Settings */}
-                  <div className="bg-white rounded-2xl border border-zinc-200/90 shadow-sm p-4 space-y-3">
+                  {/* Delivery Address Settings */}
+                  <div className="bg-white rounded-3xl border border-zinc-200/90 shadow-sm p-4 space-y-3">
                     <div className="flex justify-between items-center border-b pb-2">
                       <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
                         📍 Saved Delivery Address
                       </span>
-                      <button onClick={saveAddressToLocal} className="px-3 py-1 bg-zinc-950 text-white rounded-xl text-[10px] font-black">
+                      <button onClick={saveAddressToLocal} className="px-3 py-1 bg-zinc-950 text-white rounded-xl text-[10px] font-black active:scale-95">
                         Save
                       </button>
                     </div>
@@ -1745,8 +1828,8 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Flipkart Styled Account Menu Lists */}
-                  <div className="bg-white rounded-2xl border border-zinc-200/90 shadow-sm divide-y text-xs font-bold text-zinc-700">
+                  {/* Account Settings List */}
+                  <div className="bg-white rounded-3xl border border-zinc-200/90 shadow-sm divide-y text-xs font-bold text-zinc-700">
                     <div onClick={() => setIsNotifOpen(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
                       <span className="flex items-center gap-2.5">🔔 Notification Settings</span>
                       <span>›</span>
@@ -1756,22 +1839,22 @@ export default function App() {
                       <span>›</span>
                     </div>
                     <div onClick={() => setShowSupportModal(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
-                      <span className="flex items-center gap-2.5">🎧 Help Center & Contact</span>
+                      <span className="flex items-center gap-2.5">🎧 Help Center & WhatsApp</span>
                       <span>›</span>
                     </div>
                   </div>
 
-                  {/* Customer's OWN Orders History */}
+                  {/* Orders History */}
                   <div id="my-orders-scroll-target" className="space-y-3 pt-2">
                     <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY WARDROBE ORDERS ({orders.length})</h4>
                     {orders.length === 0 ? (
-                      <div className="text-center py-8 bg-white border border-dashed rounded-2xl space-y-1">
+                      <div className="text-center py-8 bg-white border border-dashed rounded-3xl space-y-1">
                         <span className="text-2xl">🛍️</span>
                         <p className="text-xs text-zinc-400 font-bold">No orders placed yet.</p>
                       </div>
                     ) : (
                       orders.map(o => (
-                        <div key={o.id} className="p-4 bg-white border rounded-2xl space-y-2 text-xs font-bold shadow-sm">
+                        <div key={o.id} className="p-4 bg-white border rounded-3xl space-y-2 text-xs font-bold shadow-sm">
                           <div className="flex justify-between items-center border-b pb-1 font-black">
                             <span>Ref: #{o.orderIdRef || o.id.slice(0,6)}</span>
                             <span className="bg-zinc-100 text-zinc-900 px-2 py-0.5 rounded text-[10px]">{o.status}</span>
@@ -1796,9 +1879,9 @@ export default function App() {
                   </div>
 
                   {user ? (
-                    <button onClick={handleLogout} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-xs uppercase mt-4">Logout Account</button>
+                    <button onClick={handleLogout} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-xs uppercase mt-4 active:scale-95">Logout Account</button>
                   ) : (
-                    <button onClick={handleGoogleLogin} className="w-full py-3 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase mt-4">Sign in with Google</button>
+                    <button onClick={handleGoogleLogin} className="w-full py-3 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase mt-4 active:scale-95">Sign in with Google</button>
                   )}
                 </div>
               )}
@@ -1807,7 +1890,85 @@ export default function App() {
         </div>
       </div>
 
-      {/* FULL SCREEN PRODUCT DETAILS MODAL - FULL FIT (NO CUTS) */}
+      {/* MOBILE BOTTOM SHEET FILTER DRAWER */}
+      {isFilterDrawerOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-black text-sm uppercase tracking-wider">Refine Wardrobe Filters</h3>
+              <button onClick={() => setIsFilterDrawerOpen(false)} className="p-1 bg-zinc-100 rounded-lg">✕</button>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[10px] font-black uppercase text-zinc-400">Department</span>
+              <div className="flex flex-wrap gap-1.5">
+                {FASHION_DEPARTMENTS.map(d => (
+                  <button 
+                    key={d} 
+                    onClick={() => setActiveDepartment(d)} 
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${activeDepartment === d ? 'bg-zinc-950 text-white' : 'bg-zinc-50'}`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[10px] font-black uppercase text-zinc-400">Budget Range</span>
+              <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                {[
+                  { id: "All", label: "All Prices" },
+                  { id: "under500", label: "Under ₹500" },
+                  { id: "500-1000", label: "₹500 - ₹1,000" },
+                  { id: "1000-2000", label: "₹1,000 - ₹2,000" },
+                  { id: "above2000", label: "₹2,000+" }
+                ].map(r => (
+                  <button 
+                    key={r.id} 
+                    onClick={() => setPriceFilter(r.id)} 
+                    className={`p-2 rounded-xl border text-left ${priceFilter === r.id ? 'bg-zinc-950 text-white' : 'bg-zinc-50'}`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[10px] font-black uppercase text-zinc-400">Size Sizing</span>
+              <div className="flex flex-wrap gap-1.5">
+                {["All", ...APPAREL_SIZES, ...FOOTWEAR_SIZES_ADULT].map(sz => (
+                  <button 
+                    key={sz} 
+                    onClick={() => setSizeFilter(sz)} 
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${sizeFilter === sz ? 'bg-zinc-950 text-white' : 'bg-zinc-50'}`}
+                  >
+                    {sz}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button 
+                onClick={() => { setPriceFilter("All"); setSizeFilter("All"); setActiveDepartment("All"); setIsFilterDrawerOpen(false); }}
+                className="flex-1 py-3 bg-zinc-100 rounded-xl text-xs font-black uppercase"
+              >
+                Clear All
+              </button>
+              <button 
+                onClick={() => setIsFilterDrawerOpen(false)}
+                className="flex-1 py-3 bg-zinc-950 text-white rounded-xl text-xs font-black uppercase"
+              >
+                Apply Filters ({filtered.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULL SCREEN PRODUCT DETAILS MODAL - 4:5 FRAMING */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-zinc-900 flex flex-col justify-between animate-fadeIn">
           <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm">
@@ -1825,7 +1986,7 @@ export default function App() {
           </div>
 
           <div className="max-w-2xl mx-auto w-full p-4 space-y-6 pb-28">
-            <div className="relative h-96 md:h-[480px] rounded-3xl overflow-hidden bg-stone-100/80 border flex items-center justify-center p-3">
+            <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-stone-100/80 border flex items-center justify-center p-3">
               <img 
                 src={(selectedProduct.images || [selectedProduct.img])[currentProductSlide]} 
                 alt={selectedProduct.name} 
@@ -1866,6 +2027,7 @@ export default function App() {
               </div>
             </div>
 
+            {/* Size Selector */}
             {selectedProduct.availableSizes && selectedProduct.availableSizes.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <div className="flex justify-between items-center">
@@ -1886,6 +2048,7 @@ export default function App() {
               </div>
             )}
 
+            {/* Color Palette Selector */}
             {selectedProduct.availableColors && selectedProduct.availableColors.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <span className="text-xs font-black uppercase tracking-wider">SELECT COLOR</span>
@@ -1933,7 +2096,7 @@ export default function App() {
             <div className="border-t pt-4 space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-black uppercase tracking-wider">REVIEWS ({productReviews.length})</span>
-                <span className="text-xs font-black text-amber-500">⭐ 4.5 / 5.0</span>
+                <span className="text-xs font-black text-amber-500">⭐ 4.8 / 5.0</span>
               </div>
 
               <form onSubmit={handleSubmitReview} className="p-3 bg-zinc-50 rounded-2xl border space-y-2">
@@ -1987,7 +2150,7 @@ export default function App() {
           <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t p-3.5 z-50 flex gap-3 max-w-2xl mx-auto shadow-2xl">
             <button 
               onClick={() => addToCart(selectedProduct, productPageQty)}
-              className="flex-1 py-3.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-black rounded-2xl text-xs uppercase tracking-wider"
+              className="flex-1 py-3.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-black rounded-2xl text-xs uppercase tracking-wider active:scale-95"
             >
               Add to Bag
             </button>
@@ -1997,7 +2160,7 @@ export default function App() {
                 setSelectedProduct(null);
                 setIsCartOpen(true);
               }}
-              className="flex-1 py-3.5 bg-zinc-950 hover:bg-zinc-800 text-white font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl"
+              className="flex-1 py-3.5 bg-zinc-950 hover:bg-zinc-800 text-white font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl active:scale-95"
             >
               Buy Now →
             </button>
@@ -2005,7 +2168,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Bag / Cart Drawer System */}
+      {/* CART DRAWER */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
@@ -2079,7 +2242,7 @@ export default function App() {
 
               <button 
                 onClick={handleCheckoutInit}
-                className="w-full py-3.5 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl"
+                className="w-full py-3.5 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95"
               >
                 Confirm & Pay (₹{finalPayableTotal}) →
               </button>
@@ -2088,7 +2251,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Wishlist Drawer with Full Empty State Handling */}
+      {/* WISHLIST DRAWER */}
       {isWishlistOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
@@ -2107,7 +2270,7 @@ export default function App() {
                   </p>
                   <button 
                     onClick={() => { setIsWishlistOpen(false); setActiveTab("shop"); }}
-                    className="px-6 py-2.5 bg-zinc-950 text-white rounded-full text-xs font-black uppercase tracking-wider shadow"
+                    className="px-6 py-2.5 bg-zinc-950 text-white rounded-full text-xs font-black uppercase tracking-wider shadow active:scale-95"
                   >
                     Start Exploring Now →
                   </button>
@@ -2149,7 +2312,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Customer Notification Drawer */}
+      {/* NOTIFICATIONS DRAWER */}
       {isNotifOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
@@ -2225,7 +2388,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2-MINUTE CUSTOMER VERIFICATION POPUP (NO UTR MANUAL INPUT) */}
+      {/* 2-MINUTE CUSTOMER VERIFICATION POPUP */}
       {activePaymentOrder && (
         <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-center text-zinc-900 shadow-2xl">
@@ -2270,7 +2433,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Invoice Modal for Confirmed Orders */}
+      {/* INVOICE MODAL */}
       {showInvoice && completedOrderReceipt && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-xs font-bold text-zinc-900">
@@ -2291,18 +2454,19 @@ export default function App() {
         </div>
       )}
 
-      {/* Floating Customer Support Button */}
+      {/* FLOATING CONCIERGE SUPPORT BUTTON (REFINED) */}
       <div className="fixed bottom-20 right-4 z-40">
         <button 
           onClick={() => setShowSupportModal(true)} 
-          className="bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-full shadow-2xl flex items-center gap-2 font-black text-xs uppercase"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-full shadow-2xl flex items-center gap-1.5 font-black text-xs uppercase active:scale-95"
+          title="Direct Concierge"
         >
           <span>💬</span>
           <span className="hidden md:inline">Support</span>
         </button>
       </div>
 
-      {/* Support Modal */}
+      {/* SUPPORT MODAL */}
       {showSupportModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold text-zinc-900">
@@ -2326,7 +2490,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Size Guide Modal */}
+      {/* SIZE GUIDE MODAL */}
       {showSizeGuide && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold">
@@ -2347,30 +2511,56 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom Nav Dock (Hidden in Admin View) */}
+      {/* REFINED MOBILE BOTTOM DOCK (5-TAB STANDARD) */}
       {!isAdminUrl && (
-        <div className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl">
-          <button onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); }} className="flex flex-col items-center text-zinc-800">
-            <span className="text-base">🏠</span>
-            <span className="text-[9px] font-black uppercase">Home</span>
+        <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl">
+          <button 
+            onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); }} 
+            className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'All' ? 'text-zinc-950 font-black' : 'text-zinc-400'}`}
+          >
+            <span className="text-lg">🏠</span>
+            <span className="text-[9px] uppercase tracking-wider mt-0.5">Home</span>
           </button>
-          <button onClick={() => { setActiveDepartment("Men"); setActiveTab("shop"); }} className="flex flex-col items-center text-zinc-500 hover:text-black">
-            <span className="text-base">👔</span>
-            <span className="text-[9px] font-black uppercase">Men</span>
+          
+          <button 
+            onClick={() => { setActiveDepartment("Men"); setActiveTab("shop"); }} 
+            className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'Men' ? 'text-zinc-950 font-black' : 'text-zinc-400'}`}
+          >
+            <span className="text-lg">👕</span>
+            <span className="text-[9px] uppercase tracking-wider mt-0.5">Men</span>
           </button>
-          <button onClick={() => { setActiveDepartment("Women"); setActiveTab("shop"); }} className="flex flex-col items-center text-zinc-500 hover:text-black">
-            <span className="text-base">👗</span>
-            <span className="text-[9px] font-black uppercase">Women</span>
+
+          <button 
+            onClick={() => { setActiveDepartment("Women"); setActiveTab("shop"); }} 
+            className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'Women' ? 'text-zinc-950 font-black' : 'text-zinc-400'}`}
+          >
+            <span className="text-lg">👗</span>
+            <span className="text-[9px] uppercase tracking-wider mt-0.5">Women</span>
           </button>
-          <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center bg-zinc-950 text-white px-3 py-1 rounded-2xl shadow">
-            <span className="text-[9px] font-black">🛍️ {cart.length}</span>
-            <span className="text-[8px]">₹{finalPayableTotal}</span>
+
+          <button 
+            onClick={() => setIsCartOpen(true)} 
+            className="flex flex-col items-center relative text-zinc-900"
+          >
+            <div className="relative">
+              <span className="text-lg">🛍️</span>
+              {cart.length > 0 && (
+                <span className="absolute -top-1 -right-2 bg-amber-600 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow">
+                  {cart.length}
+                </span>
+              )}
+            </div>
+            <span className="text-[9px] uppercase tracking-wider font-black mt-0.5">Bag</span>
           </button>
-          <button onClick={() => setActiveTab("account")} className="flex flex-col items-center text-zinc-500 hover:text-black">
-            <span className="text-base">👤</span>
-            <span className="text-[9px] font-black uppercase">Account</span>
+
+          <button 
+            onClick={() => setActiveTab("account")} 
+            className={`flex flex-col items-center transition-colors ${activeTab === 'account' ? 'text-zinc-950 font-black' : 'text-zinc-400'}`}
+          >
+            <span className="text-lg">👤</span>
+            <span className="text-[9px] uppercase tracking-wider mt-0.5">Account</span>
           </button>
-        </div>
+        </nav>
       )}
 
     </div>

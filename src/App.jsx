@@ -41,7 +41,7 @@ const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Brand Attributes & Styling Directives
+// Brand Attributes
 const BRAND_NAME = "STYLE ZONE - X";
 const BRAND_TAGLINE = "DEFINE YOUR STYLE.";
 const MY_UPI_ID = "8637589429-3@ybl"; 
@@ -953,6 +953,12 @@ export default function App() {
 
   const productReviews = selectedProduct ? reviews.filter(r => r.productId === selectedProduct.id) : [];
 
+  // Similar Products Generator
+  const similarProducts = selectedProduct ? products.filter(p => 
+    p.id !== selectedProduct.id && 
+    (p.category === selectedProduct.category || p.subCategory === selectedProduct.subCategory)
+  ).slice(0, 6) : [];
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-[#FAFAF9] text-zinc-900'} pb-28 transition-all duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
       
@@ -968,8 +974,8 @@ export default function App() {
       <div className="w-full max-w-7xl mx-auto">
         
         {/* LUXURY DOUBLE-DECKER HEADER */}
-        <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full">
-          {/* Row 1: Brand & Top Utilities */}
+        <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full shadow-sm">
+          {/* Row 1: Brand & Utilities */}
           <div className="px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
             <div 
               className="flex items-center gap-3 cursor-pointer group" 
@@ -1028,7 +1034,7 @@ export default function App() {
                 <button
                   key={dept}
                   onClick={() => { setActiveDepartment(dept); setActiveCollection("All"); setActiveTab("shop"); }}
-                  className={`text-xs uppercase font-black tracking-wider px-3 py-1.5 rounded-full transition-all whitespace-nowrap ${
+                  className={`text-xs uppercase font-black tracking-wider px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap ${
                     activeDepartment === dept 
                       ? 'bg-zinc-950 text-white shadow-sm' 
                       : 'text-zinc-500 hover:text-zinc-900 bg-zinc-100/70'
@@ -1041,15 +1047,15 @@ export default function App() {
           )}
         </header>
 
-        {/* Fashion Search Bar */}
-        {!isAdmin && !isAdminUrl && activeTab === "shop" && (
-          <div className="px-4 py-2.5 bg-white/90 backdrop-blur-sm border-b border-zinc-100 w-full max-w-7xl mx-auto relative">
-            <div className="flex items-center gap-2">
+        {/* RESTORED PERMANENT LUXURY SEARCH BAR */}
+        {!isAdmin && !isAdminUrl && (
+          <div className="px-4 py-2.5 bg-white border-b border-zinc-200/80 sticky top-[95px] md:top-[100px] z-30 shadow-xs">
+            <div className="max-w-7xl mx-auto relative flex items-center gap-2">
               <div className="relative flex-1">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
                 <input 
                   type="text" 
-                  placeholder="Search dresses, oversized tees, kicks..." 
+                  placeholder="Search dresses, oversized tees, sneakers, kurtis..." 
                   value={search}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
@@ -1064,22 +1070,22 @@ export default function App() {
               >
                 🎙️
               </button>
-            </div>
 
-            {showSuggestions && search.length > 0 && (
-              <div className="absolute top-full left-4 right-4 bg-white border border-zinc-200 rounded-2xl shadow-2xl z-40 max-h-52 overflow-y-auto mt-1 p-2 text-xs font-bold">
-                {products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 6).map(p => (
-                  <div 
-                    key={p.id} 
-                    onClick={() => { setSearch(p.name); setShowSuggestions(false); }}
-                    className="p-2.5 hover:bg-zinc-50 rounded-xl cursor-pointer flex items-center justify-between"
-                  >
-                    <span>{p.name} ({p.category})</span>
-                    <span className="text-[11px] font-black text-zinc-900">₹{getDiscountedPrice(p.price, p.discount)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+              {showSuggestions && search.length > 0 && (
+                <div className="absolute top-full left-0 right-0 bg-white border border-zinc-200 rounded-2xl shadow-2xl z-40 max-h-52 overflow-y-auto mt-1 p-2 text-xs font-bold">
+                  {products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 6).map(p => (
+                    <div 
+                      key={p.id} 
+                      onClick={() => { setSearch(p.name); setShowSuggestions(false); }}
+                      className="p-2.5 hover:bg-zinc-50 rounded-xl cursor-pointer flex items-center justify-between"
+                    >
+                      <span>{p.name} ({p.category})</span>
+                      <span className="text-[11px] font-black text-zinc-900">₹{getDiscountedPrice(p.price, p.discount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1609,7 +1615,6 @@ export default function App() {
                                 key={p.id} 
                                 className="bg-white rounded-2xl p-2 border border-zinc-200/80 hover:shadow-xl transition-all duration-300 flex flex-col justify-between group relative"
                               >
-                                {/* 4:5 Aspect Frame for Perfect Outfits */}
                                 <div 
                                   className="relative aspect-[4/5] rounded-xl overflow-hidden bg-stone-100/70 cursor-pointer flex items-center justify-center p-2 mb-2"
                                   onClick={() => addToRecentlyViewed(p)}
@@ -1620,14 +1625,12 @@ export default function App() {
                                     className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" 
                                   />
 
-                                  {/* Discount Pill Top-Left */}
                                   {p.discount > 0 && (
                                     <span className="absolute top-2 left-2 bg-rose-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow">
                                       -{p.discount}%
                                     </span>
                                   )}
 
-                                  {/* 36x36px Floating Wishlist Button Top-Right */}
                                   <button 
                                     onClick={(e) => { e.stopPropagation(); toggleWishlist(p); }} 
                                     className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/95 backdrop-blur-md flex items-center justify-center text-xs shadow-md active:scale-90 transition-transform"
@@ -1636,7 +1639,6 @@ export default function App() {
                                   </button>
                                 </div>
 
-                                {/* Product Typography Hierarchy */}
                                 <div className="space-y-1 px-1">
                                   <p className="text-[9px] font-black uppercase tracking-wider text-zinc-400 truncate">
                                     {p.brand || "STYLE ZONE - X"}
@@ -1648,13 +1650,11 @@ export default function App() {
                                     {p.name}
                                   </h4>
 
-                                  {/* Star Rating Strip */}
                                   <div className="flex items-center gap-1 text-[10px] text-amber-500 font-bold">
                                     <span>★ 4.8</span>
                                     <span className="text-zinc-400 font-medium">(24)</span>
                                   </div>
 
-                                  {/* Price Matrix */}
                                   <div className="pt-0.5">
                                     <div className="flex items-baseline gap-1.5 flex-wrap">
                                       <span className="text-sm md:text-base font-black text-zinc-950">
@@ -1674,7 +1674,6 @@ export default function App() {
                                   </div>
                                 </div>
 
-                                {/* Quick View Button */}
                                 <div className="mt-2.5 pt-1">
                                   <button 
                                     onClick={() => addToRecentlyViewed(p)} 
@@ -1968,7 +1967,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FULL SCREEN PRODUCT DETAILS MODAL - 4:5 FRAMING */}
+      {/* FULL SCREEN PRODUCT DETAILS MODAL (WITH SIMILAR PRODUCTS) */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-zinc-900 flex flex-col justify-between animate-fadeIn">
           <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm">
@@ -2091,6 +2090,33 @@ export default function App() {
               </div>
               <p className="text-xs text-zinc-600 leading-relaxed pt-2">{selectedProduct.specifications}</p>
             </div>
+
+            {/* SIMILAR PRODUCTS SECTION */}
+            {similarProducts.length > 0 && (
+              <div className="border-t pt-6 space-y-3">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-zinc-950">
+                    ✨ SIMILAR STYLES YOU MAY LIKE
+                  </h4>
+                  <span className="text-[10px] text-zinc-400 font-bold">{similarProducts.length} recommendations</span>
+                </div>
+                <div className="flex gap-3 overflow-x-auto no-scrollbar py-1">
+                  {similarProducts.map(sp => (
+                    <div 
+                      key={sp.id} 
+                      onClick={() => addToRecentlyViewed(sp)} 
+                      className="w-32 shrink-0 cursor-pointer text-center group bg-white p-2 rounded-2xl border border-zinc-200/80 hover:shadow-md transition-all"
+                    >
+                      <div className="aspect-[4/5] w-full rounded-xl overflow-hidden bg-stone-100/70 p-1 flex items-center justify-center mb-1.5">
+                        <img src={sp.images?.[0] || sp.img} alt={sp.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                      </div>
+                      <p className="text-[10px] font-bold truncate text-zinc-800">{sp.name}</p>
+                      <p className="text-[11px] font-black text-zinc-950">₹{getDiscountedPrice(sp.price, sp.discount)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Verified Reviews Stream */}
             <div className="border-t pt-4 space-y-3">
@@ -2454,7 +2480,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FLOATING CONCIERGE SUPPORT BUTTON (REFINED) */}
+      {/* FLOATING CONCIERGE SUPPORT BUTTON */}
       <div className="fixed bottom-20 right-4 z-40">
         <button 
           onClick={() => setShowSupportModal(true)} 

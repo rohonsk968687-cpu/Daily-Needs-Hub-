@@ -86,7 +86,12 @@ const FASHION_COLLECTIONS_MAP = {
   ]
 };
 
-const FASHION_COLORS = ["Black", "White", "Navy Blue", "Olive Green", "Beige", "Maroon", "Charcoal Grey"];
+// Expanded Fashion Colors
+const FASHION_COLORS = [
+  "Black", "White", "Navy Blue", "Olive Green", "Beige", "Maroon", "Charcoal Grey",
+  "Pink", "Baby Pink", "Lavender", "Sky Blue", "Mint Green", "Peach", "Coral", "Wine", "Mustard Yellow", "Rust"
+];
+
 const APPAREL_SIZES = ["S", "M", "L", "XL", "XXL"];
 const FOOTWEAR_SIZES_ADULT = ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10", "UK 11"];
 const FOOTWEAR_SIZES_KIDS = ["Kids 1", "Kids 2", "Kids 3", "Kids 4", "Kids 5", "Kids 6", "Kids 7", "Kids 8", "Kids 9", "Kids 10"];
@@ -156,11 +161,13 @@ export default function App() {
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(null);
 
+  // Admin Controls
   const [adminSelectedDept, setAdminSelectedDept] = useState("Men");
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [adminDeptFilter, setAdminDeptFilter] = useState("All");
   const [editingProduct, setEditingProduct] = useState(null);
 
+  // Customer Profile & Logistics
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
     gender: 'Male',
@@ -331,7 +338,7 @@ export default function App() {
       setIsProductsLoading(false); 
     }, () => setIsProductsLoading(false));
 
-    const qNotif = collection(db, "notifications");
+    const qNotif = query(collection(db, "notifications"), orderBy("createdAt", "desc"));
     const unsubNotif = onSnapshot(qNotif, (snapshot) => {
       setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -566,6 +573,7 @@ export default function App() {
     }
   };
 
+  // Cancel Order & Restore Stock via Transaction
   const handleCancelOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -591,6 +599,7 @@ export default function App() {
     }
   };
 
+  // 7-Day Return / Exchange System
   const handleReturnOrder = async (order) => {
     if (!user || (order.userId !== user.uid && !isAdmin)) {
       return showToastMessage("Unauthorized action!", "error");
@@ -725,6 +734,65 @@ export default function App() {
       showToastMessage("Coupon deployed live!");
     } catch(err) {
       showToastMessage("Failed to create coupon", "error");
+    }
+  };
+
+  // Admin Notification Creator
+  const handleCreateNotification = async (e) => {
+    e.preventDefault();
+    if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
+    const title = e.target.notifTitle.value.trim();
+    const desc = e.target.notifDesc.value.trim();
+    if (!title || !desc) return;
+    try {
+      await addDoc(collection(db, "notifications"), {
+        title,
+        desc,
+        date: new Date().toLocaleDateString(),
+        createdAt: new Date().toISOString()
+      });
+      e.target.reset();
+      showToastMessage("Broadcast alert dispatched to customers! 📢");
+    } catch (err) {
+      showToastMessage("Error sending alert", "error");
+    }
+  };
+
+  // Admin Delete Order
+  const handleDeleteOrder = async (orderId) => {
+    if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
+    if (window.confirm("Permanently delete this order record? This cannot be undone.")) {
+      try {
+        await deleteDoc(doc(db, "orders", orderId));
+        showToastMessage("Order deleted from database!");
+      } catch (err) {
+        showToastMessage("Failed to delete order", "error");
+      }
+    }
+  };
+
+  // Admin Save Full Product Edit
+  const handleSaveProductEdit = async (e) => {
+    e.preventDefault();
+    if (!isAdmin || !editingProduct) return;
+    const el = e.target.elements;
+    try {
+      await updateDoc(doc(db, "products", editingProduct.id), {
+        name: el.editName.value,
+        brand: el.editBrand.value,
+        category: el.editCategory.value,
+        subCategory: el.editSubCategory.value,
+        price: Number(el.editPrice.value),
+        discount: Number(el.editDiscount.value) || 0,
+        stock: Number(el.editStock.value),
+        fabric: el.editFabric.value,
+        fit: el.editFit.value,
+        specifications: el.editSpecs.value
+      });
+      setEditingProduct(null);
+      showToastMessage("Product details updated successfully! ✨");
+    } catch (err) {
+      showToastMessage("Failed to update product", "error");
     }
   };
 
@@ -933,10 +1001,10 @@ export default function App() {
           <div className="flex items-center gap-2">
             {!isAdmin && !isAdminUrl && (
               <>
-                <button onClick={() => setIsNotifOpen(true)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all">
+                <button onClick={() => setIsNotifOpen(true)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all" title="Notifications">
                   🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-zinc-950 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{notifications.length}</span>}
                 </button>
-                <button onClick={() => setIsWishlistOpen(true)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all">
+                <button onClick={() => setIsWishlistOpen(true)} className="p-2.5 bg-zinc-100 hover:bg-zinc-200 rounded-full text-xs relative transition-all" title="Wishlist">
                   ❤️ {wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-zinc-950 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{wishlist.length}</span>}
                 </button>
               </>
@@ -1075,6 +1143,29 @@ export default function App() {
                           </div>
                         </div>
 
+                        {/* Broadcast Alerts Control (Admin Notification Sender) */}
+                        <div className="p-4 bg-zinc-50 rounded-2xl border space-y-3">
+                          <h4 className="text-xs font-black uppercase tracking-wider">📢 Broadcast Customer Alert / Notification</h4>
+                          <form onSubmit={handleCreateNotification} className="space-y-2">
+                            <input name="notifTitle" placeholder="Notification Title (e.g. Flash Drop Live!)" className="w-full p-2 border rounded-xl text-xs font-bold bg-white" required />
+                            <textarea name="notifDesc" placeholder="Notification message text..." className="w-full p-2 border rounded-xl text-xs font-medium bg-white" rows="2" required />
+                            <button type="submit" className="px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Publish Alert</button>
+                          </form>
+                          
+                          <div className="space-y-1.5 pt-2">
+                            <p className="text-[10px] font-black uppercase text-zinc-400">Active Notifications ({notifications.length}):</p>
+                            {notifications.map(n => (
+                              <div key={n.id} className="flex justify-between items-center bg-white p-2 border rounded-xl text-xs">
+                                <div>
+                                  <p className="font-bold">{n.title}</p>
+                                  <p className="text-[10px] text-zinc-500">{n.desc}</p>
+                                </div>
+                                <button onClick={() => deleteDoc(doc(db, "notifications", n.id))} className="text-rose-600 font-bold p-1">🗑️</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
                         {/* LIVE PAYMENT ALERT RADAR */}
                         {orders.filter(o => o.paymentStatus?.includes("2 Min Timer") || o.status?.includes("Awaiting")).length > 0 && (
                           <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-2 animate-pulse">
@@ -1134,7 +1225,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Add Product Form */}
+                    {/* Add Product Form with Expanded Colors */}
                     {adminTab === "add-item" && (
                       <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-xs font-bold">
                         <div className="flex justify-between items-center border-b pb-2">
@@ -1142,7 +1233,7 @@ export default function App() {
                           <button type="button" onClick={() => setAdminTab("manage-items")} className="text-[10px] text-zinc-500 underline font-black">View Stock Grid →</button>
                         </div>
                         
-                        <input name="itemName" placeholder="Product Title (e.g. Heavyweight Boxy Tee) *" className="border p-3 rounded-xl bg-zinc-50" required />
+                        <input name="itemName" placeholder="Product Title (e.g. Vintage Wash Oversized Tee) *" className="border p-3 rounded-xl bg-zinc-50" required />
                         
                         <div className="grid grid-cols-3 gap-2">
                           <input name="itemBrand" placeholder="Brand Label" defaultValue="STYLE ZONE - X" className="border p-3 rounded-xl bg-zinc-50" />
@@ -1173,6 +1264,7 @@ export default function App() {
                           <input name="itemFit" placeholder="Fit (e.g. Boxy Oversized / Slim)" className="border p-3 rounded-xl bg-zinc-50" />
                         </div>
 
+                        {/* Sizing Matrix */}
                         <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
                           <p className="text-[10px] font-black uppercase text-zinc-500">Available Sizes Matrix:</p>
                           <div className="flex flex-wrap gap-2 text-[10px]">
@@ -1184,8 +1276,9 @@ export default function App() {
                           </div>
                         </div>
 
+                        {/* Expanded Color Palette */}
                         <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
-                          <p className="text-[10px] font-black uppercase text-zinc-500">Color Palette:</p>
+                          <p className="text-[10px] font-black uppercase text-zinc-500">Color Palette (Pink, Baby Pink, Lavender, etc.):</p>
                           <div className="flex flex-wrap gap-2 text-[10px]">
                             {FASHION_COLORS.map(col => (
                               <label key={col} className="flex items-center gap-1 bg-white px-2 py-1 rounded border cursor-pointer">
@@ -1216,7 +1309,7 @@ export default function App() {
                       </form>
                     )}
 
-                    {/* Stock Grid Manager */}
+                    {/* Stock Grid Manager with Edit Modal Trigger */}
                     {adminTab === "manage-items" && (
                       <div className="space-y-3">
                         <div className="flex gap-2">
@@ -1242,11 +1335,11 @@ export default function App() {
                             <div key={p.id} className="p-3 bg-zinc-50 border rounded-2xl flex justify-between items-center text-xs font-bold">
                               <div>
                                 <p className="font-black text-sm">{p.name}</p>
-                                <p className="text-[10px] text-zinc-400">{p.category} → {p.subCategory} | Stock: {p.stock} | ₹{p.price}</p>
+                                <p className="text-[10px] text-zinc-400">{p.category} → {p.subCategory} | Stock: <span className="text-zinc-950 font-black">{p.stock}</span> | ₹{p.price}</p>
                               </div>
                               <div className="flex gap-2">
-                                <button onClick={() => setEditingProduct(p)} className="p-1.5 bg-zinc-200 hover:bg-zinc-300 rounded-lg">✏️</button>
-                                <button onClick={async () => { if(window.confirm("Delete item?")) await deleteDoc(doc(db, "products", p.id)); }} className="p-1.5 bg-rose-100 text-rose-600 rounded-lg">🗑️</button>
+                                <button onClick={() => setEditingProduct(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl font-bold">✏️ Edit</button>
+                                <button onClick={async () => { if(window.confirm("Delete item permanently?")) await deleteDoc(doc(db, "products", p.id)); }} className="p-2 bg-rose-50 text-rose-600 rounded-xl font-bold">🗑️ Delete</button>
                               </div>
                             </div>
                           ))}
@@ -1254,14 +1347,17 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Orders Room with Instant Live Approval */}
+                    {/* Orders Room with Instant Live Approval & Order Deletion */}
                     {adminTab === "orders" && (
                       <div className="space-y-3 max-h-[65vh] overflow-y-auto">
                         {orders.map(ord => (
                           <div key={ord.id} className="p-4 bg-zinc-50 border rounded-2xl space-y-2 text-xs">
                             <div className="flex justify-between items-center font-black border-b pb-1">
                               <span>Ref: #{ord.orderIdRef || ord.id.slice(0,6)}</span>
-                              <span className="text-sm font-black">₹{ord.totalAmount}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black">₹{ord.totalAmount}</span>
+                                <button onClick={() => handleDeleteOrder(ord.id)} className="p-1 text-rose-600 hover:bg-rose-100 rounded" title="Delete Order">🗑️</button>
+                              </div>
                             </div>
                             <p><b>Buyer:</b> {ord.customerName} ({ord.phone})</p>
                             <p className="text-zinc-500"><b>Address:</b> {ord.address}</p>
@@ -1537,41 +1633,145 @@ export default function App() {
                       </div>
                     </div>
                   )}
+
+                  {/* Customer Storefront Bottom About & Info Section */}
+                  <footer className="mt-12 border-t border-zinc-200/80 bg-white p-6 md:p-10 space-y-6 text-zinc-800">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-zinc-950 text-white rounded flex items-center justify-center font-black text-xs">X</div>
+                          <span className="font-serif font-black text-sm tracking-widest">{BRAND_NAME}</span>
+                        </div>
+                        <p className="text-xs text-zinc-500 leading-relaxed">
+                          Your premium hub for oversized streetwear, high-grade knitwear, ethnic silhouettes, and sneakers.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs font-bold">
+                        <h5 className="font-black uppercase tracking-wider text-zinc-400 text-[10px]">Shop Departments</h5>
+                        <p onClick={() => { setActiveDepartment("Men"); window.scrollTo({top: 0, behavior: 'smooth'}); }} className="cursor-pointer hover:underline text-zinc-600">Men's Streetwear</p>
+                        <p onClick={() => { setActiveDepartment("Women"); window.scrollTo({top: 0, behavior: 'smooth'}); }} className="cursor-pointer hover:underline text-zinc-600">Women's Couture</p>
+                        <p onClick={() => { setActiveDepartment("Footwear"); window.scrollTo({top: 0, behavior: 'smooth'}); }} className="cursor-pointer hover:underline text-zinc-600">Sneakers & Kicks</p>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs font-bold">
+                        <h5 className="font-black uppercase tracking-wider text-zinc-400 text-[10px]">Assurance & Policy</h5>
+                        <p className="text-zinc-600">✓ 7-Day Hassle Free Returns</p>
+                        <p className="text-zinc-600">✓ 100% Genuine Fabrics</p>
+                        <p className="text-zinc-600">✓ Express Delivery in PIN: 731204 & Region</p>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs font-bold">
+                        <h5 className="font-black uppercase tracking-wider text-zinc-400 text-[10px]">Support & Contact</h5>
+                        <p className="text-zinc-600">WhatsApp: +91 8637589429</p>
+                        <p className="text-zinc-600">Email: stylezone.x0@gmail.com</p>
+                        <p className="text-zinc-600">Bolpur, West Bengal - 731204</p>
+                      </div>
+                    </div>
+                    <div className="border-t border-zinc-100 pt-4 flex flex-col md:flex-row justify-between items-center text-[10px] text-zinc-400 font-bold gap-2">
+                      <span>© {new Date().getFullYear()} STYLE ZONE - X. All rights reserved.</span>
+                      <span>Designed & Developed for Speed & Style.</span>
+                    </div>
+                  </footer>
                 </>
               )}
 
-              {/* Account Views */}
+              {/* Flipkart-Style Account Section */}
               {activeTab === "account" && (
-                <div className="p-4 space-y-6 max-w-xl mx-auto">
-                  <div className="bg-zinc-950 text-white p-6 rounded-3xl space-y-2">
-                    <span className="text-[10px] uppercase tracking-widest text-zinc-400 font-black">MEMBERSHIP ACCESS</span>
-                    <h3 className="text-xl font-black">{custInfo.name || "Style Zone Member"}</h3>
-                    <p className="text-xs text-zinc-400">{user?.email || custInfo.phone || "Sign in for secured cloud sync"}</p>
+                <div className="p-3 md:p-6 space-y-4 max-w-xl mx-auto pb-10">
+                  {/* Top Profile Card */}
+                  <div className="bg-white p-5 rounded-2xl border border-zinc-200/90 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-lg">
+                          {(custInfo.name || user?.displayName || "S").charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <h3 className="font-black text-base text-zinc-900 leading-tight">
+                            Hey, {custInfo.name || user?.displayName || "Style Zone Insider"}
+                          </h3>
+                          <p className="text-xs text-zinc-400 font-bold mt-0.5">{user?.email || custInfo.phone || "Guest Shopper"}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowSupportModal(true)} className="p-2 border border-zinc-200 rounded-xl text-xs font-black flex items-center gap-1">
+                        🎧 Help
+                      </button>
+                    </div>
+
+                    {/* Orders & Wishlist Dual Action Pills */}
+                    <div className="grid grid-cols-2 gap-2.5 pt-2">
+                      <div 
+                        onClick={() => {
+                          const elem = document.getElementById("my-orders-scroll-target");
+                          if (elem) elem.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="p-3 border border-zinc-200 rounded-xl flex items-center gap-2.5 cursor-pointer hover:bg-zinc-50 transition-colors"
+                      >
+                        <span className="text-xl">📦</span>
+                        <div>
+                          <p className="font-black text-xs">Orders</p>
+                          <p className="text-[10px] text-zinc-400 font-bold">{orders.length} Placed</p>
+                        </div>
+                      </div>
+                      <div 
+                        onClick={() => setIsWishlistOpen(true)}
+                        className="p-3 border border-zinc-200 rounded-xl flex items-center gap-2.5 cursor-pointer hover:bg-zinc-50 transition-colors"
+                      >
+                        <span className="text-xl text-blue-600">💙</span>
+                        <div>
+                          <p className="font-black text-xs">Wishlist</p>
+                          <p className="text-[10px] text-zinc-400 font-bold">{wishlist.length} Items</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Address Section */}
-                  <div className="bg-white p-5 rounded-3xl border space-y-3 text-xs font-bold">
+                  {/* Profile & Delivery Address Settings */}
+                  <div className="bg-white rounded-2xl border border-zinc-200/90 shadow-sm p-4 space-y-3">
                     <div className="flex justify-between items-center border-b pb-2">
-                      <span className="text-xs font-black uppercase tracking-wider">📍 Default Shipping Details</span>
-                      <button onClick={saveAddressToLocal} className="px-3 py-1 bg-zinc-950 text-white rounded-xl text-[10px] font-black">Save Address</button>
+                      <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                        📍 Saved Delivery Address
+                      </span>
+                      <button onClick={saveAddressToLocal} className="px-3 py-1 bg-zinc-950 text-white rounded-xl text-[10px] font-black">
+                        Save
+                      </button>
                     </div>
-                    <input placeholder="Full Name" value={custInfo.name} onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} className="w-full p-2.5 bg-zinc-50 border rounded-xl" />
-                    <input placeholder="10-Digit Mobile" value={custInfo.phone} onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})} className="w-full p-2.5 bg-zinc-50 border rounded-xl" />
-                    <input placeholder="Address / Landmark" value={custInfo.vill} onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})} className="w-full p-2.5 bg-zinc-50 border rounded-xl" />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input placeholder="City" value={custInfo.city} onChange={(e) => setCustInfo({...custInfo, city: e.target.value})} className="p-2.5 bg-zinc-50 border rounded-xl" />
-                      <input placeholder="Pincode" value={custInfo.pin} onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})} className="p-2.5 bg-zinc-50 border rounded-xl" />
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <input placeholder="Full Name *" value={custInfo.name} onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} className="col-span-2 p-2.5 bg-zinc-50 border rounded-xl font-bold" />
+                      <input placeholder="10-Digit Mobile *" value={custInfo.phone} onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})} className="col-span-2 p-2.5 bg-zinc-50 border rounded-xl font-bold" />
+                      <input placeholder="Village / Street / House *" value={custInfo.vill} onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})} className="col-span-2 p-2.5 bg-zinc-50 border rounded-xl font-bold" />
+                      <input placeholder="City" value={custInfo.city} onChange={(e) => setCustInfo({...custInfo, city: e.target.value})} className="p-2.5 bg-zinc-50 border rounded-xl font-bold" />
+                      <input placeholder="Pincode *" value={custInfo.pin} onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})} className="p-2.5 bg-zinc-50 border rounded-xl font-bold" />
                     </div>
                   </div>
 
-                  {/* Orders History with Cancel & 7-Day Return */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY ORDERS ({orders.length})</h4>
+                  {/* Flipkart Styled Account Menu Lists */}
+                  <div className="bg-white rounded-2xl border border-zinc-200/90 shadow-sm divide-y text-xs font-bold text-zinc-700">
+                    <div onClick={() => setIsNotifOpen(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                      <span className="flex items-center gap-2.5">🔔 Notification Settings</span>
+                      <span>›</span>
+                    </div>
+                    <div onClick={() => setShowSizeGuide(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                      <span className="flex items-center gap-2.5">📏 Official Size Guide</span>
+                      <span>›</span>
+                    </div>
+                    <div onClick={() => setShowSupportModal(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                      <span className="flex items-center gap-2.5">🎧 Help Center & Contact</span>
+                      <span>›</span>
+                    </div>
+                  </div>
+
+                  {/* Customer's OWN Orders History */}
+                  <div id="my-orders-scroll-target" className="space-y-3 pt-2">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400">📦 MY WARDROBE ORDERS ({orders.length})</h4>
                     {orders.length === 0 ? (
-                      <p className="text-xs text-zinc-400 text-center py-6 font-bold bg-white rounded-2xl border">No orders placed yet.</p>
+                      <div className="text-center py-8 bg-white border border-dashed rounded-2xl space-y-1">
+                        <span className="text-2xl">🛍️</span>
+                        <p className="text-xs text-zinc-400 font-bold">No orders placed yet.</p>
+                      </div>
                     ) : (
                       orders.map(o => (
-                        <div key={o.id} className="p-4 bg-white border rounded-2xl space-y-2 text-xs font-bold">
+                        <div key={o.id} className="p-4 bg-white border rounded-2xl space-y-2 text-xs font-bold shadow-sm">
                           <div className="flex justify-between items-center border-b pb-1 font-black">
                             <span>Ref: #{o.orderIdRef || o.id.slice(0,6)}</span>
                             <span className="bg-zinc-100 text-zinc-900 px-2 py-0.5 rounded text-[10px]">{o.status}</span>
@@ -1596,9 +1796,9 @@ export default function App() {
                   </div>
 
                   {user ? (
-                    <button onClick={handleLogout} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-xs uppercase">Logout Session</button>
+                    <button onClick={handleLogout} className="w-full py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-xs uppercase mt-4">Logout Account</button>
                   ) : (
-                    <button onClick={handleGoogleLogin} className="w-full py-3 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase">Connect With Google</button>
+                    <button onClick={handleGoogleLogin} className="w-full py-3 bg-zinc-950 text-white rounded-2xl font-black text-xs uppercase mt-4">Sign in with Google</button>
                   )}
                 </div>
               )}
@@ -1607,7 +1807,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* FULL SCREEN PRODUCT DETAILS MODAL - FULL FIT OBJECT-CONTAIN (NO CUTS) */}
+      {/* FULL SCREEN PRODUCT DETAILS MODAL - FULL FIT (NO CUTS) */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-zinc-900 flex flex-col justify-between animate-fadeIn">
           <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm">
@@ -1625,7 +1825,6 @@ export default function App() {
           </div>
 
           <div className="max-w-2xl mx-auto w-full p-4 space-y-6 pb-28">
-            {/* Main Stage Image - 100% Uncropped Responsive Framing */}
             <div className="relative h-96 md:h-[480px] rounded-3xl overflow-hidden bg-stone-100/80 border flex items-center justify-center p-3">
               <img 
                 src={(selectedProduct.images || [selectedProduct.img])[currentProductSlide]} 
@@ -1639,7 +1838,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Thumbnail Carousel - Full Fit */}
             {(selectedProduct.images || []).length > 1 && (
               <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                 {selectedProduct.images.map((img, idx) => (
@@ -1668,7 +1866,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Size Selector */}
             {selectedProduct.availableSizes && selectedProduct.availableSizes.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <div className="flex justify-between items-center">
@@ -1689,7 +1886,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Color Palette Selector */}
             {selectedProduct.availableColors && selectedProduct.availableColors.length > 0 && (
               <div className="space-y-2 border-t pt-4">
                 <span className="text-xs font-black uppercase tracking-wider">SELECT COLOR</span>
@@ -1888,6 +2084,143 @@ export default function App() {
                 Confirm & Pay (₹{finalPayableTotal}) →
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wishlist Drawer with Full Empty State Handling */}
+      {isWishlistOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
+          <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b pb-3">
+                <h3 className="text-base font-black uppercase tracking-widest">SAVED TO WISHLIST ({wishlist.length})</h3>
+                <button onClick={() => setIsWishlistOpen(false)} className="text-xs font-black p-1 bg-zinc-100 rounded-lg">✕</button>
+              </div>
+
+              {wishlist.length === 0 ? (
+                <div className="text-center py-20 space-y-3">
+                  <span className="text-5xl block">🤍</span>
+                  <h4 className="font-black text-sm text-zinc-900">Your Wishlist is Empty!</h4>
+                  <p className="text-xs text-zinc-400 font-bold max-w-xs mx-auto">
+                    Explore our freshest drops and tap the heart icon on any style to save it here.
+                  </p>
+                  <button 
+                    onClick={() => { setIsWishlistOpen(false); setActiveTab("shop"); }}
+                    className="px-6 py-2.5 bg-zinc-950 text-white rounded-full text-xs font-black uppercase tracking-wider shadow"
+                  >
+                    Start Exploring Now →
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[70vh] overflow-y-auto no-scrollbar">
+                  {wishlist.map(p => (
+                    <div key={p.id} className="flex gap-3 p-3 bg-zinc-50 border rounded-2xl items-center justify-between">
+                      <div className="w-16 h-16 rounded-xl bg-white border p-1 flex items-center justify-center shrink-0">
+                        <img src={p.images?.[0] || p.img} alt={p.name} className="w-full h-full object-contain" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-black text-xs truncate">{p.name}</h4>
+                        <p className="text-xs font-black text-zinc-900 mt-0.5">₹{getDiscountedPrice(p.price, p.discount)}</p>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button 
+                          onClick={() => {
+                            addToRecentlyViewed(p);
+                            setIsWishlistOpen(false);
+                          }}
+                          className="px-2.5 py-1 bg-zinc-950 text-white rounded-lg text-[10px] font-black"
+                        >
+                          View
+                        </button>
+                        <button 
+                          onClick={() => toggleWishlist(p)}
+                          className="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Notification Drawer */}
+      {isNotifOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
+          <div className="w-full max-w-md bg-white h-full p-6 shadow-2xl overflow-y-auto rounded-l-3xl flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center border-b pb-3">
+                <h3 className="text-base font-black uppercase tracking-widest">NOTIFICATIONS ({notifications.length})</h3>
+                <button onClick={() => setIsNotifOpen(false)} className="text-xs font-black p-1 bg-zinc-100 rounded-lg">✕</button>
+              </div>
+
+              {notifications.length === 0 ? (
+                <div className="text-center py-20 space-y-2">
+                  <span className="text-4xl block">🔔</span>
+                  <p className="text-xs text-zinc-400 font-bold">No new notifications right now.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.map(n => (
+                    <div key={n.id} className="p-3.5 bg-zinc-50 border rounded-2xl space-y-1">
+                      <div className="flex justify-between items-center font-black text-xs text-zinc-900">
+                        <span>{n.title}</span>
+                        <span className="text-[10px] text-zinc-400 font-bold">{n.date || "Today"}</span>
+                      </div>
+                      <p className="text-xs text-zinc-600 leading-relaxed font-medium">{n.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN EDIT PRODUCT MODAL */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-4 text-xs font-bold text-zinc-900 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black uppercase text-sm">Edit Product SKU: {editingProduct.name}</h3>
+              <button onClick={() => setEditingProduct(null)} className="p-1 bg-zinc-100 rounded">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveProductEdit} className="grid gap-3">
+              <input name="editName" defaultValue={editingProduct.name} placeholder="Title" className="border p-2.5 rounded-xl bg-zinc-50" required />
+              
+              <div className="grid grid-cols-2 gap-2">
+                <input name="editBrand" defaultValue={editingProduct.brand || "STYLE ZONE - X"} placeholder="Brand" className="border p-2.5 rounded-xl bg-zinc-50" />
+                <select name="editCategory" defaultValue={editingProduct.category} className="border p-2.5 rounded-xl bg-zinc-50 font-black">
+                  {FASHION_DEPARTMENTS.slice(1).map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+
+              <input name="editSubCategory" defaultValue={editingProduct.subCategory || "General"} placeholder="Sub Category" className="border p-2.5 rounded-xl bg-zinc-50" />
+
+              <div className="grid grid-cols-3 gap-2">
+                <input name="editPrice" type="number" defaultValue={editingProduct.price} placeholder="Price" className="border p-2.5 rounded-xl bg-zinc-50" required />
+                <input name="editDiscount" type="number" defaultValue={editingProduct.discount || 0} placeholder="Discount %" className="border p-2.5 rounded-xl bg-zinc-50" />
+                <input name="editStock" type="number" defaultValue={editingProduct.stock} placeholder="Stock" className="border p-2.5 rounded-xl bg-zinc-50" required />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input name="editFabric" defaultValue={editingProduct.fabric || ""} placeholder="Fabric" className="border p-2.5 rounded-xl bg-zinc-50" />
+                <input name="editFit" defaultValue={editingProduct.fit || ""} placeholder="Fit" className="border p-2.5 rounded-xl bg-zinc-50" />
+              </div>
+
+              <textarea name="editSpecs" defaultValue={editingProduct.specifications || ""} placeholder="Specifications" rows="3" className="border p-2.5 rounded-xl bg-zinc-50" />
+
+              <div className="flex gap-2 pt-2">
+                <button type="submit" className="flex-1 py-3 bg-zinc-950 text-white rounded-xl font-black uppercase">Save Changes</button>
+                <button type="button" onClick={() => setEditingProduct(null)} className="px-4 py-3 bg-zinc-100 rounded-xl font-black uppercase">Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

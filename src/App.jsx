@@ -116,22 +116,25 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("shop"); 
   const [adminTab, setAdminTab] = useState("dashboard"); 
 
-  // Modals & Navigation
+  // Modals & Drawers
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [search, setSearch] = useState("");
   const [activeDepartment, setActiveDepartment] = useState("All");
   const [activeCollection, setActiveCollection] = useState("All");
   
-  // Refined Filter & Sort States
+  // Filter & Sort States
   const [priceFilter, setPriceFilter] = useState("All");
   const [sizeFilter, setSizeFilter] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
 
-  // 2-Minute Verification & Checkout States
+  // Verification & Payment States
   const [paymentType, setPaymentType] = useState("UPI"); 
   const [activePaymentOrder, setActivePaymentOrder] = useState(null);
   const [verificationCountdown, setVerificationCountdown] = useState(120);
@@ -167,13 +170,18 @@ export default function App() {
   const [adminDeptFilter, setAdminDeptFilter] = useState("All");
   const [editingProduct, setEditingProduct] = useState(null);
 
+  // Extended Customer Profile & Saved Address State
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
+    nickName: '',
     gender: 'Male',
     phone: '',
-    vill: '', 
+    email: '',
+    road: '',
     landmark: '', 
+    vill: '', 
     city: 'Bolpur',
+    dist: 'Birbhum',
     pin: '' 
   });
 
@@ -226,11 +234,6 @@ export default function App() {
     window.addEventListener("popstate", checkPath);
     window.addEventListener("hashchange", checkPath);
 
-    const savedRV = localStorage.getItem("szx_recently_viewed");
-    if (savedRV) {
-      try { setRecentlyViewed(JSON.parse(savedRV)); } catch(e){}
-    }
-
     return () => {
       window.removeEventListener("popstate", checkPath);
       window.removeEventListener("hashchange", checkPath);
@@ -262,7 +265,7 @@ export default function App() {
     verifyAdminStatus();
   }, [user]);
 
-  // Wishlist & Cart Persistence
+  // Account-Wise Data & Recently Viewed Isolation Fix
   useEffect(() => {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
@@ -270,24 +273,55 @@ export default function App() {
         if (cartDoc.exists()) setCart(cartDoc.data().items || []);
         
         const profileDoc = await getDoc(doc(db, "profiles", user.uid));
-        if (profileDoc.exists()) setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
+        if (profileDoc.exists()) {
+          setCustInfo(prev => ({ 
+            ...prev, 
+            ...profileDoc.data(),
+            email: user.email || profileDoc.data().email || prev.email 
+          }));
+        } else {
+          setCustInfo(prev => ({
+            ...prev,
+            name: user.displayName || prev.name,
+            email: user.email || prev.email
+          }));
+        }
 
         const wishDoc = await getDoc(doc(db, "wishlists", user.uid));
         if (wishDoc.exists()) setWishlist(wishDoc.data().items || []);
+
+        // Load account specific recently viewed
+        const accountRV = localStorage.getItem(`szx_recently_viewed_${user.uid}`);
+        if (accountRV) {
+          try { setRecentlyViewed(JSON.parse(accountRV)); } catch(e){}
+        } else {
+          setRecentlyViewed([]);
+        }
       };
       loadUserCloudData();
     } else {
+      // Guest isolation
       const localCart = localStorage.getItem("szx_guest_cart");
       if (localCart) {
         try { setCart(JSON.parse(localCart)); } catch(e) {}
+      } else {
+        setCart([]);
       }
       const localWish = localStorage.getItem("szx_guest_wishlist");
       if (localWish) {
         try { setWishlist(JSON.parse(localWish)); } catch(e) {}
+      } else {
+        setWishlist([]);
       }
       const localProfile = localStorage.getItem("szx_saved_address");
       if (localProfile) {
         try { setCustInfo(prev => ({ ...prev, ...JSON.parse(localProfile) })); } catch(e) {}
+      }
+      const guestRV = localStorage.getItem("szx_guest_recently_viewed");
+      if (guestRV) {
+        try { setRecentlyViewed(JSON.parse(guestRV)); } catch(e){}
+      } else {
+        setRecentlyViewed([]);
       }
     }
   }, [user]);
@@ -315,12 +349,6 @@ export default function App() {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.isAnonymous) {
         setUser(currentUser);
-        const profileDoc = await getDoc(doc(db, "profiles", currentUser.uid));
-        if (profileDoc.exists()) {
-          setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
-        } else if (currentUser.displayName) {
-          setCustInfo(prev => ({ ...prev, name: currentUser.displayName }));
-        }
       } else {
         setUser(null);
         if (!currentUser) {
@@ -425,12 +453,6 @@ export default function App() {
       const result = await signInWithPopup(auth, googleProvider);
       if(result.user) {
         setUser(result.user);
-        const profileDoc = await getDoc(doc(db, "profiles", result.user.uid));
-        if (profileDoc.exists()) {
-          setCustInfo(prev => ({ ...prev, ...profileDoc.data() }));
-        } else {
-          setCustInfo(prev => ({ ...prev, name: result.user.displayName || '' }));
-        }
         showToastMessage("Welcome to STYLE ZONE - X ✨");
       }
     } catch (error) {
@@ -443,23 +465,40 @@ export default function App() {
     setUser(null);
     setIsAdmin(false);
     setCart([]);
-    localStorage.removeItem("szx_guest_cart");
-    setCustInfo({ name: '', gender: 'Male', phone: '', vill: '', landmark: '', city: 'Bolpur', pin: '' });
-    showToastMessage("Logged out successfully!");
+    setWishlist([]);
+    setRecentlyViewed([]);
+    setCustInfo({ 
+      name: '', nickName: '', gender: 'Male', phone: '', email: '', 
+      road: '', landmark: '', vill: '', city: 'Bolpur', dist: 'Birbhum', pin: '' 
+    });
+    showToastMessage("Logged out successfully! Session cleared.");
   };
 
-  const saveAddressToLocal = async () => {
-    if (!custInfo.name || !custInfo.phone || !custInfo.vill || !custInfo.pin || !custInfo.city) {
-      return showToastMessage("All address fields are required!", "error");
-    }
-    if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
-      return showToastMessage(`Delivery unavailable for PIN: ${custInfo.pin}`, "error");
+  const saveProfileData = async () => {
+    if (!custInfo.name || !custInfo.phone) {
+      return showToastMessage("Name and mobile number are required!", "error");
     }
     if (user && !user.isAnonymous) {
       await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
     }
     localStorage.setItem("szx_saved_address", JSON.stringify(custInfo));
-    showToastMessage("Shipping address verified & locked!");
+    setIsProfileModalOpen(false);
+    showToastMessage("My Profile updated successfully! 👤");
+  };
+
+  const saveAddressData = async () => {
+    if (!custInfo.vill || !custInfo.pin || !custInfo.city || !custInfo.phone) {
+      return showToastMessage("Please fill Village, City, PIN and Phone!", "error");
+    }
+    if (!ALLOWED_PINS.includes(custInfo.pin.trim())) {
+      return showToastMessage(`Delivery currently unavailable for PIN: ${custInfo.pin}`, "error");
+    }
+    if (user && !user.isAnonymous) {
+      await setDoc(doc(db, "profiles", user.uid), custInfo, { merge: true });
+    }
+    localStorage.setItem("szx_saved_address", JSON.stringify(custInfo));
+    setIsAddressModalOpen(false);
+    showToastMessage("Saved Delivery Address updated! 📍");
   };
 
   const getDiscountedPrice = (price, discount) => {
@@ -524,6 +563,7 @@ export default function App() {
     syncWishlistCloud(updatedWish);
   };
 
+  // Fixed Account-Isolated Recently Viewed Tracker
   const addToRecentlyViewed = (p) => {
     setSelectedProduct(p);
     setCurrentProductSlide(0);
@@ -535,7 +575,8 @@ export default function App() {
     if (!exists) {
       updatedRV = [p, ...recentlyViewed.slice(0, 7)];
       setRecentlyViewed(updatedRV);
-      localStorage.setItem("szx_recently_viewed", JSON.stringify(updatedRV));
+      const storageKey = user && !user.isAnonymous ? `szx_recently_viewed_${user.uid}` : "szx_guest_recently_viewed";
+      localStorage.setItem(storageKey, JSON.stringify(updatedRV));
     }
   };
 
@@ -838,13 +879,13 @@ export default function App() {
       return showToastMessage("Please login with Google to complete your order!", "error");
     }
     if(!custInfo.name || !custInfo.vill || !custInfo.pin || !custInfo.phone || !custInfo.city) {
-      return showToastMessage("Shipping details incomplete! Fill all fields.", "error");
+      return showToastMessage("Shipping details incomplete! Fill Saved Address.", "error");
     }
     if(!ALLOWED_PINS.includes(custInfo.pin.trim())) {
       return showToastMessage(`Delivery unavailable for PIN: ${custInfo.pin}`, "error");
     }
 
-    const fullAddressString = `${custInfo.vill}, ${custInfo.city}, Landmark: ${custInfo.landmark || 'N/A'}, PIN: ${custInfo.pin}`;
+    const fullAddressString = `${custInfo.road ? custInfo.road + ', ' : ''}${custInfo.vill}, Landmark: ${custInfo.landmark || 'N/A'}, ${custInfo.city}, Dist: ${custInfo.dist}, PIN: ${custInfo.pin}`;
     
     try {
       let createdOrder = null;
@@ -875,7 +916,7 @@ export default function App() {
           customerName: custInfo.name,
           phone: custInfo.phone,
           address: fullAddressString,
-          userEmail: user.email || "N/A",
+          userEmail: user.email || custInfo.email || "N/A",
           items: cart.map(i => ({ 
             id: i.id,
             name: i.name, 
@@ -953,7 +994,6 @@ export default function App() {
 
   const productReviews = selectedProduct ? reviews.filter(r => r.productId === selectedProduct.id) : [];
 
-  // Similar Products Generator
   const similarProducts = selectedProduct ? products.filter(p => 
     p.id !== selectedProduct.id && 
     (p.category === selectedProduct.category || p.subCategory === selectedProduct.subCategory)
@@ -975,7 +1015,6 @@ export default function App() {
         
         {/* LUXURY DOUBLE-DECKER HEADER */}
         <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/80 w-full shadow-sm">
-          {/* Row 1: Brand & Utilities */}
           <div className="px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
             <div 
               className="flex items-center gap-3 cursor-pointer group" 
@@ -1027,7 +1066,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Row 2: Scrollable Fashion Department Navigation */}
           {!isAdminUrl && (
             <div className="px-4 py-2 border-t border-zinc-100 overflow-x-auto no-scrollbar flex items-center gap-3">
               {FASHION_DEPARTMENTS.map(dept => (
@@ -1047,7 +1085,7 @@ export default function App() {
           )}
         </header>
 
-        {/* RESTORED PERMANENT LUXURY SEARCH BAR */}
+        {/* PERMANENT LUXURY SEARCH BAR */}
         {!isAdmin && !isAdminUrl && (
           <div className="px-4 py-2.5 bg-white border-b border-zinc-200/80 sticky top-[95px] md:top-[100px] z-30 shadow-xs">
             <div className="max-w-7xl mx-auto relative flex items-center gap-2">
@@ -1127,7 +1165,6 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {/* Top Switcher Tabs */}
                     <div className="grid grid-cols-4 gap-1.5 p-1.5 bg-zinc-100 rounded-2xl border">
                       <button 
                         onClick={() => setAdminTab("dashboard")} 
@@ -1155,7 +1192,7 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* Dashboard KPI Analytics */}
+                    {/* Admin Dashboard */}
                     {adminTab === "dashboard" && (
                       <div className="space-y-4">
                         <div className="bg-zinc-950 rounded-3xl p-5 text-white space-y-4 shadow-xl">
@@ -1180,8 +1217,8 @@ export default function App() {
                         <div className="p-4 bg-zinc-50 rounded-2xl border space-y-3">
                           <h4 className="text-xs font-black uppercase tracking-wider">📢 Broadcast Customer Alert / Notification</h4>
                           <form onSubmit={handleCreateNotification} className="space-y-2">
-                            <input name="notifTitle" placeholder="Notification Title (e.g. Flash Drop Live!)" className="w-full p-2 border rounded-xl text-xs font-bold bg-white" required />
-                            <textarea name="notifDesc" placeholder="Notification message text..." className="w-full p-2 border rounded-xl text-xs font-medium bg-white" rows="2" required />
+                            <input name="notifTitle" placeholder="Notification Title" className="w-full p-2 border rounded-xl text-xs font-bold bg-white" required />
+                            <textarea name="notifDesc" placeholder="Notification text..." className="w-full p-2 border rounded-xl text-xs font-medium bg-white" rows="2" required />
                             <button type="submit" className="px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Publish Alert</button>
                           </form>
                           
@@ -1227,119 +1264,7 @@ export default function App() {
                             ))}
                           </div>
                         )}
-
-                        {/* Standardized Coupon Deployment Section */}
-                        <div className="p-4 bg-zinc-50 rounded-2xl border space-y-2">
-                          <h4 className="text-xs font-black uppercase tracking-wider">🏷️ Deploy Standardized Coupon</h4>
-                          <form onSubmit={handleCreateCoupon} className="grid grid-cols-3 gap-2">
-                            <input name="coupCode" placeholder="Code (e.g. SZX50)" className="p-2 border rounded-xl text-xs uppercase font-bold" required />
-                            <select name="coupType" className="p-2 border rounded-xl text-xs font-bold">
-                              <option value="fixed">Fixed ₹ Off</option>
-                              <option value="percentage">Percentage % Off</option>
-                            </select>
-                            <input name="coupValue" type="number" placeholder="Discount Value" className="p-2 border rounded-xl text-xs font-bold" required />
-                            <input name="coupMin" type="number" placeholder="Min Order (₹)" className="col-span-2 p-2 border rounded-xl text-xs font-bold" required />
-                            <button type="submit" className="py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Publish Coupon</button>
-                          </form>
-                        </div>
-
-                        {/* Critical Low Stock Radar */}
-                        <div className="p-4 bg-zinc-50 rounded-2xl border space-y-2">
-                          <h4 className="text-xs font-black text-rose-600 uppercase tracking-wider">⚠️ Critical Inventory Alert (&lt; 5 Units)</h4>
-                          <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                            {products.filter(p => p.stock < 5).map(p => (
-                              <div key={p.id} className="flex justify-between items-center text-xs font-bold p-2 bg-white rounded-xl border">
-                                <span>{p.name} ({p.category})</span>
-                                <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-black">{p.stock} Left</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
                       </div>
-                    )}
-
-                    {/* Add Product Form */}
-                    {adminTab === "add-item" && (
-                      <form onSubmit={addProduct} className="bg-white p-2 rounded-3xl grid gap-3 text-xs font-bold">
-                        <div className="flex justify-between items-center border-b pb-2">
-                          <h3 className="text-xs font-black text-zinc-900 uppercase tracking-wider">📦 Add New Fashion / Footwear SKU</h3>
-                          <button type="button" onClick={() => setAdminTab("manage-items")} className="text-[10px] text-zinc-500 underline font-black">View Stock Grid →</button>
-                        </div>
-                        
-                        <input name="itemName" placeholder="Product Title (e.g. Vintage Wash Oversized Tee) *" className="border p-3 rounded-xl bg-zinc-50" required />
-                        
-                        <div className="grid grid-cols-3 gap-2">
-                          <input name="itemBrand" placeholder="Brand Label" defaultValue="STYLE ZONE - X" className="border p-3 rounded-xl bg-zinc-50" />
-                          <select 
-                            name="itemCategory" 
-                            value={adminSelectedDept}
-                            onChange={(e) => setAdminSelectedDept(e.target.value)}
-                            className="border p-3 rounded-xl bg-zinc-50 font-black"
-                          >
-                            {FASHION_DEPARTMENTS.slice(1).map(d => <option key={d} value={d}>{d}</option>)}
-                          </select>
-                          <select name="itemSubCategory" className="border p-3 rounded-xl bg-zinc-50 font-bold">
-                            <option value="General">General</option>
-                            {FASHION_COLLECTIONS_MAP[adminSelectedDept]?.map(sub => (
-                              <option key={sub.name} value={sub.name}>{sub.icon} {sub.name}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2">
-                          <input name="itemPrice" type="number" placeholder="Selling Price (₹) *" className="border p-3 rounded-xl bg-zinc-50" required />
-                          <input name="itemDiscount" type="number" placeholder="Discount %" className="border p-3 rounded-xl bg-zinc-50" />
-                          <input name="itemStock" type="number" placeholder="Stock Qty *" className="border p-3 rounded-xl bg-zinc-50" required />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <input name="itemFabric" placeholder="Fabric (e.g. 240 GSM Terry Cotton)" className="border p-3 rounded-xl bg-zinc-50" />
-                          <input name="itemFit" placeholder="Fit (e.g. Boxy Oversized / Slim)" className="border p-3 rounded-xl bg-zinc-50" />
-                        </div>
-
-                        {/* Sizing Matrix */}
-                        <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
-                          <p className="text-[10px] font-black uppercase text-zinc-500">Available Sizes Matrix:</p>
-                          <div className="flex flex-wrap gap-2 text-[10px]">
-                            {(adminSelectedDept === "Footwear" ? [...FOOTWEAR_SIZES_ADULT, ...FOOTWEAR_SIZES_KIDS] : APPAREL_SIZES).map(sz => (
-                              <label key={sz} className="flex items-center gap-1 bg-white px-2 py-1 rounded border cursor-pointer">
-                                <input type="checkbox" name="adminSizes" value={sz} /> {sz}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Color Palette */}
-                        <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
-                          <p className="text-[10px] font-black uppercase text-zinc-500">Color Palette:</p>
-                          <div className="flex flex-wrap gap-2 text-[10px]">
-                            {FASHION_COLORS.map(col => (
-                              <label key={col} className="flex items-center gap-1 bg-white px-2 py-1 rounded border cursor-pointer">
-                                <input type="checkbox" name="adminColors" value={col} /> {col}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="p-3 bg-zinc-50 rounded-2xl border space-y-1.5">
-                          <p className="text-[10px] font-black uppercase text-zinc-500">Photography URLs (Up to 5):</p>
-                          <input name="itemImg1" placeholder="Front View (Main Thumbnail) *" className="w-full border p-2 rounded-lg bg-white mb-1" required />
-                          <input name="itemImg2" placeholder="Back / Side View" className="w-full border p-2 rounded-lg bg-white mb-1" />
-                          <input name="itemImg3" placeholder="Model Full Body / Styling" className="w-full border p-2 rounded-lg bg-white mb-1" />
-                          <input name="itemImg4" placeholder="Fabric Detail / Close-up" className="w-full border p-2 rounded-lg bg-white mb-1" />
-                          <input name="itemImg5" placeholder="Sole / Inside View" className="w-full border p-2 rounded-lg bg-white" />
-                        </div>
-
-                        <textarea name="itemSpecs" placeholder="Complete Style Description & Wash Care..." className="border p-3 rounded-xl bg-zinc-50" rows="2" />
-
-                        <div className="flex gap-4 p-2 bg-zinc-50 rounded-xl">
-                          <label className="flex items-center gap-1"><input type="checkbox" name="isTrending" /> 🔥 Trending</label>
-                          <label className="flex items-center gap-1"><input type="checkbox" name="isNewArrival" /> ✨ New Arrival</label>
-                          <label className="flex items-center gap-1"><input type="checkbox" name="isFeatured" /> 🌟 Hero Featured</label>
-                        </div>
-
-                        <button type="submit" className="bg-zinc-950 hover:bg-zinc-800 text-white p-3.5 rounded-2xl font-black uppercase tracking-wider transition-all">PUBLISH TO STORE</button>
-                      </form>
                     )}
 
                     {/* Stock Grid Manager */}
@@ -1371,7 +1296,7 @@ export default function App() {
                                 <p className="text-[10px] text-zinc-400">{p.category} → {p.subCategory} | Stock: <span className="text-zinc-950 font-black">{p.stock}</span> | ₹{p.price}</p>
                               </div>
                               <div className="flex gap-2">
-                                <button onClick={() => setEditingProduct(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl font-bold">✏️ Edit</button>
+                                <button onClick={() => setEditingProduct(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl font-bold">✏️️ Edit</button>
                                 <button onClick={async () => { if(window.confirm("Delete item permanently?")) await deleteDoc(doc(db, "products", p.id)); }} className="p-2 bg-rose-50 text-rose-600 rounded-xl font-bold">🗑️ Delete</button>
                               </div>
                             </div>
@@ -1524,67 +1449,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Sub-Collection Strip */}
-                  {activeDepartment !== "All" && FASHION_COLLECTIONS_MAP[activeDepartment] && (
-                    <div className="px-4 mb-4">
-                      <div className="p-2.5 bg-zinc-100 rounded-2xl flex gap-2 overflow-x-auto no-scrollbar">
-                        <button 
-                          onClick={() => setActiveCollection("All")}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all ${activeCollection === "All" ? 'bg-zinc-950 text-white shadow-sm' : 'bg-white text-zinc-800'}`}
-                        >
-                          All {activeDepartment}
-                        </button>
-                        {FASHION_COLLECTIONS_MAP[activeDepartment].map(coll => (
-                          <button 
-                            key={coll.name} 
-                            onClick={() => setActiveCollection(coll.name)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 ${activeCollection === coll.name ? 'bg-zinc-950 text-white shadow-sm' : 'bg-white text-zinc-800'}`}
-                          >
-                            <span>{coll.icon}</span>
-                            <span>{coll.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* FILTER BAR WITH BOTTOM SHEET TOGGLE */}
-                  <div className="px-4 mb-3">
-                    <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar py-1">
-                      <button 
-                        onClick={() => setIsFilterDrawerOpen(true)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black shrink-0 active:scale-95 shadow"
-                      >
-                        <span>☰</span>
-                        <span>Filters</span>
-                      </button>
-
-                      <div className="flex items-center gap-1.5 shrink-0 text-xs font-bold">
-                        <select 
-                          value={sortBy} 
-                          onChange={(e) => setSortBy(e.target.value)}
-                          className="p-2 border border-zinc-200 rounded-xl bg-white text-xs font-bold text-zinc-800 focus:outline-none"
-                        >
-                          <option value="recommended">Featured Picks</option>
-                          <option value="newest">New Arrivals</option>
-                          <option value="priceLow">Price: Low to High</option>
-                          <option value="priceHigh">Price: High to Low</option>
-                          <option value="discount">Biggest Discount</option>
-                        </select>
-
-                        <select 
-                          value={sizeFilter} 
-                          onChange={(e) => setSizeFilter(e.target.value)}
-                          className="p-2 border border-zinc-200 rounded-xl bg-white text-xs font-bold text-zinc-800 focus:outline-none"
-                        >
-                          <option value="All">All Sizes</option>
-                          {APPAREL_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
-                          {FOOTWEAR_SIZES_ADULT.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
                   {/* 2-COLUMN LUXURY PRODUCT GRID (MOBILE FIRST 4:5 ASPECT RATIO) */}
                   <div className="px-4 mb-8">
                     {isProductsLoading ? (
@@ -1690,7 +1554,7 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* RECENTLY VIEWED CAROUSEL */}
+                  {/* RECENTLY VIEWED (ACCOUNT SPECIFIC) */}
                   {recentlyViewed.length > 0 && (
                     <div className="mx-4 my-8 p-4 bg-white rounded-3xl border border-zinc-200/80 shadow-sm space-y-3">
                       <div className="flex justify-between items-center border-b pb-2">
@@ -1717,7 +1581,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* STOREFRONT ABOUT & FOOTER SECTION */}
+                  {/* FOOTER */}
                   <footer className="mt-12 border-t border-zinc-200/80 bg-white p-6 md:p-10 space-y-6 text-zinc-800">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                       <div className="space-y-2">
@@ -1726,7 +1590,7 @@ export default function App() {
                           <span className="font-serif font-black text-sm tracking-widest">{BRAND_NAME}</span>
                         </div>
                         <p className="text-xs text-zinc-500 leading-relaxed">
-                          Your premium hub for oversized streetwear, high-grade knitwear, ethnic silhouettes, and sneakers.
+                          Your premium hub for oversized streetwear, knitwear, ethnic silhouettes, and sneakers.
                         </p>
                       </div>
 
@@ -1772,7 +1636,7 @@ export default function App() {
                           <h3 className="font-black text-base text-zinc-900 leading-tight">
                             Hey, {custInfo.name || user?.displayName || "Style Zone Insider"}
                           </h3>
-                          <p className="text-xs text-zinc-400 font-bold mt-0.5">{user?.email || custInfo.phone || "Guest Shopper"}</p>
+                          <p className="text-xs text-zinc-400 font-bold mt-0.5">{user?.email || custInfo.email || custInfo.phone || "Guest Shopper"}</p>
                         </div>
                       </div>
                       <button onClick={() => setShowSupportModal(true)} className="p-2 border border-zinc-200 rounded-xl text-xs font-black flex items-center gap-1 active:scale-95">
@@ -1808,36 +1672,25 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Delivery Address Settings */}
-                  <div className="bg-white rounded-3xl border border-zinc-200/90 shadow-sm p-4 space-y-3">
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
-                        📍 Saved Delivery Address
-                      </span>
-                      <button onClick={saveAddressToLocal} className="px-3 py-1 bg-zinc-950 text-white rounded-xl text-[10px] font-black active:scale-95">
-                        Save
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <input placeholder="Full Name *" value={custInfo.name} onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} className="col-span-2 p-2.5 bg-zinc-50 border rounded-xl font-bold" />
-                      <input placeholder="10-Digit Mobile *" value={custInfo.phone} onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})} className="col-span-2 p-2.5 bg-zinc-50 border rounded-xl font-bold" />
-                      <input placeholder="Village / Street / House *" value={custInfo.vill} onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})} className="col-span-2 p-2.5 bg-zinc-50 border rounded-xl font-bold" />
-                      <input placeholder="City" value={custInfo.city} onChange={(e) => setCustInfo({...custInfo, city: e.target.value})} className="p-2.5 bg-zinc-50 border rounded-xl font-bold" />
-                      <input placeholder="Pincode *" value={custInfo.pin} onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})} className="p-2.5 bg-zinc-50 border rounded-xl font-bold" />
-                    </div>
-                  </div>
-
-                  {/* Account Settings List */}
+                  {/* Clean Flipkart Account Settings Menu */}
                   <div className="bg-white rounded-3xl border border-zinc-200/90 shadow-sm divide-y text-xs font-bold text-zinc-700">
-                    <div onClick={() => setIsNotifOpen(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                    <div onClick={() => setIsProfileModalOpen(true)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                      <span className="flex items-center gap-2.5">👤 My Profile (Name, Gender, Contact)</span>
+                      <span>›</span>
+                    </div>
+                    <div onClick={() => setIsAddressModalOpen(true)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                      <span className="flex items-center gap-2.5">📍 Saved Addresses (House, Landmark, Dist)</span>
+                      <span>›</span>
+                    </div>
+                    <div onClick={() => setIsNotifOpen(true)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
                       <span className="flex items-center gap-2.5">🔔 Notification Settings</span>
                       <span>›</span>
                     </div>
-                    <div onClick={() => setShowSizeGuide(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                    <div onClick={() => setShowSizeGuide(true)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
                       <span className="flex items-center gap-2.5">📏 Official Size Guide</span>
                       <span>›</span>
                     </div>
-                    <div onClick={() => setShowSupportModal(true)} className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
+                    <div onClick={() => setShowSupportModal(true)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
                       <span className="flex items-center gap-2.5">🎧 Help Center & WhatsApp</span>
                       <span>›</span>
                     </div>
@@ -1889,78 +1742,163 @@ export default function App() {
         </div>
       </div>
 
-      {/* MOBILE BOTTOM SHEET FILTER DRAWER */}
-      {isFilterDrawerOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+      {/* 1. MY PROFILE MODAL */}
+      {isProfileModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold text-zinc-900 shadow-2xl">
             <div className="flex justify-between items-center border-b pb-3">
-              <h3 className="font-black text-sm uppercase tracking-wider">Refine Wardrobe Filters</h3>
-              <button onClick={() => setIsFilterDrawerOpen(false)} className="p-1 bg-zinc-100 rounded-lg">✕</button>
+              <h3 className="font-black text-sm uppercase tracking-wider">👤 My Profile Details</h3>
+              <button onClick={() => setIsProfileModalOpen(false)} className="p-1 bg-zinc-100 rounded-lg">✕</button>
             </div>
 
-            <div className="space-y-2">
-              <span className="text-[10px] font-black uppercase text-zinc-400">Department</span>
-              <div className="flex flex-wrap gap-1.5">
-                {FASHION_DEPARTMENTS.map(d => (
-                  <button 
-                    key={d} 
-                    onClick={() => setActiveDepartment(d)} 
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${activeDepartment === d ? 'bg-zinc-950 text-white' : 'bg-zinc-50'}`}
-                  >
-                    {d}
-                  </button>
-                ))}
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Full Name</label>
+                <input 
+                  value={custInfo.name} 
+                  onChange={(e) => setCustInfo({...custInfo, name: e.target.value})} 
+                  placeholder="e.g. Sekh Younus"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Nick Name</label>
+                <input 
+                  value={custInfo.nickName} 
+                  onChange={(e) => setCustInfo({...custInfo, nickName: e.target.value})} 
+                  placeholder="e.g. Younus / Boss"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Gender</label>
+                <select 
+                  value={custInfo.gender} 
+                  onChange={(e) => setCustInfo({...custInfo, gender: e.target.value})}
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold"
+                >
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Mobile Number</label>
+                <input 
+                  type="tel"
+                  value={custInfo.phone} 
+                  onChange={(e) => setCustInfo({...custInfo, phone: e.target.value})} 
+                  placeholder="10-digit phone"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Email ID</label>
+                <input 
+                  type="email"
+                  value={custInfo.email} 
+                  onChange={(e) => setCustInfo({...custInfo, email: e.target.value})} 
+                  placeholder="name@example.com"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <span className="text-[10px] font-black uppercase text-zinc-400">Budget Range</span>
-              <div className="grid grid-cols-2 gap-2 text-xs font-bold">
-                {[
-                  { id: "All", label: "All Prices" },
-                  { id: "under500", label: "Under ₹500" },
-                  { id: "500-1000", label: "₹500 - ₹1,000" },
-                  { id: "1000-2000", label: "₹1,000 - ₹2,000" },
-                  { id: "above2000", label: "₹2,000+" }
-                ].map(r => (
-                  <button 
-                    key={r.id} 
-                    onClick={() => setPriceFilter(r.id)} 
-                    className={`p-2 rounded-xl border text-left ${priceFilter === r.id ? 'bg-zinc-950 text-white' : 'bg-zinc-50'}`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-[10px] font-black uppercase text-zinc-400">Size Sizing</span>
-              <div className="flex flex-wrap gap-1.5">
-                {["All", ...APPAREL_SIZES, ...FOOTWEAR_SIZES_ADULT].map(sz => (
-                  <button 
-                    key={sz} 
-                    onClick={() => setSizeFilter(sz)} 
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${sizeFilter === sz ? 'bg-zinc-950 text-white' : 'bg-zinc-50'}`}
-                  >
-                    {sz}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="pt-2 flex gap-2">
+            <div className="pt-2">
               <button 
-                onClick={() => { setPriceFilter("All"); setSizeFilter("All"); setActiveDepartment("All"); setIsFilterDrawerOpen(false); }}
-                className="flex-1 py-3 bg-zinc-100 rounded-xl text-xs font-black uppercase"
+                onClick={saveProfileData} 
+                className="w-full py-3 bg-zinc-950 text-white rounded-xl text-xs font-black uppercase tracking-wider active:scale-95 shadow"
               >
-                Clear All
+                Save Profile
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. SAVED ADDRESS MODAL */}
+      {isAddressModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold text-zinc-900 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-3">
+              <h3 className="font-black text-sm uppercase tracking-wider">📍 Saved Delivery Address</h3>
+              <button onClick={() => setIsAddressModalOpen(false)} className="p-1 bg-zinc-100 rounded-lg">✕</button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">House No / Road / Street</label>
+                <input 
+                  value={custInfo.road} 
+                  onChange={(e) => setCustInfo({...custInfo, road: e.target.value})} 
+                  placeholder="e.g. Main Market Road, Near Post Office"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Landmark</label>
+                <input 
+                  value={custInfo.landmark} 
+                  onChange={(e) => setCustInfo({...custInfo, landmark: e.target.value})} 
+                  placeholder="e.g. Water Tank / School"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Village / Area / Town *</label>
+                <input 
+                  value={custInfo.vill} 
+                  onChange={(e) => setCustInfo({...custInfo, vill: e.target.value})} 
+                  placeholder="e.g. Papuri / Nanoor"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-black">City *</label>
+                  <input 
+                    value={custInfo.city} 
+                    onChange={(e) => setCustInfo({...custInfo, city: e.target.value})} 
+                    placeholder="Bolpur"
+                    className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 uppercase font-black">District (Dist) *</label>
+                  <input 
+                    value={custInfo.dist} 
+                    onChange={(e) => setCustInfo({...custInfo, dist: e.target.value})} 
+                    placeholder="Birbhum"
+                    className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 uppercase font-black">Pincode (PIN) *</label>
+                <input 
+                  type="number"
+                  value={custInfo.pin} 
+                  onChange={(e) => setCustInfo({...custInfo, pin: e.target.value})} 
+                  placeholder="e.g. 731204"
+                  className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
               <button 
-                onClick={() => setIsFilterDrawerOpen(false)}
-                className="flex-1 py-3 bg-zinc-950 text-white rounded-xl text-xs font-black uppercase"
+                onClick={saveAddressData} 
+                className="w-full py-3 bg-zinc-950 text-white rounded-xl text-xs font-black uppercase tracking-wider active:scale-95 shadow"
               >
-                Apply Filters ({filtered.length})
+                Save Delivery Address
               </button>
             </div>
           </div>
@@ -2537,7 +2475,7 @@ export default function App() {
         </div>
       )}
 
-      {/* REFINED MOBILE BOTTOM DOCK (5-TAB STANDARD) */}
+      {/* REFINED MOBILE BOTTOM DOCK */}
       {!isAdminUrl && (
         <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-zinc-200 p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl">
           <button 

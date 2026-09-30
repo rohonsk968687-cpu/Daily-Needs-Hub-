@@ -124,6 +124,10 @@ export default function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
 
+  // PWA Install State
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [search, setSearch] = useState("");
   const [activeDepartment, setActiveDepartment] = useState("All");
@@ -170,7 +174,6 @@ export default function App() {
   const [adminDeptFilter, setAdminDeptFilter] = useState("All");
   const [editingProduct, setEditingProduct] = useState(null);
 
-  // Extended Customer Profile & Saved Address State
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
     nickName: '',
@@ -220,6 +223,32 @@ export default function App() {
   const showToastMessage = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3200);
+  };
+
+  // PWA Install Prompt Listener
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const triggerPwaInstall = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        showToastMessage("Thank you for installing STYLE ZONE - X App! 🚀");
+      }
+      setDeferredPrompt(null);
+      setShowInstallBanner(false);
+    } else {
+      showToastMessage("Chrome menu (⋮) par jakar 'Install App' ya 'Add to Home screen' dabayein!", "info");
+    }
   };
 
   useEffect(() => {
@@ -290,7 +319,6 @@ export default function App() {
         const wishDoc = await getDoc(doc(db, "wishlists", user.uid));
         if (wishDoc.exists()) setWishlist(wishDoc.data().items || []);
 
-        // Load account specific recently viewed
         const accountRV = localStorage.getItem(`szx_recently_viewed_${user.uid}`);
         if (accountRV) {
           try { setRecentlyViewed(JSON.parse(accountRV)); } catch(e){}
@@ -300,7 +328,6 @@ export default function App() {
       };
       loadUserCloudData();
     } else {
-      // Guest isolation
       const localCart = localStorage.getItem("szx_guest_cart");
       if (localCart) {
         try { setCart(JSON.parse(localCart)); } catch(e) {}
@@ -563,7 +590,6 @@ export default function App() {
     syncWishlistCloud(updatedWish);
   };
 
-  // Fixed Account-Isolated Recently Viewed Tracker
   const addToRecentlyViewed = (p) => {
     setSelectedProduct(p);
     setCurrentProductSlide(0);
@@ -1010,6 +1036,33 @@ export default function App() {
         </div>
       )}
 
+      {/* PWA Floating Install Banner */}
+      {showInstallBanner && !isAdminUrl && (
+        <div className="fixed top-16 inset-x-3 md:max-w-md md:mx-auto z-40 bg-zinc-950 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between border border-zinc-700 animate-bounce">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xl">📲</span>
+            <div>
+              <p className="font-black text-xs">Install STYLE ZONE - X App</p>
+              <p className="text-[10px] text-zinc-400 font-medium">Faster shopping & direct home screen access</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button 
+              onClick={triggerPwaInstall}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black text-xs rounded-xl shadow active:scale-95"
+            >
+              Install
+            </button>
+            <button 
+              onClick={() => setShowInstallBanner(false)}
+              className="p-1 text-zinc-400 hover:text-white text-xs font-black"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Responsive Container */}
       <div className="w-full max-w-7xl mx-auto">
         
@@ -1296,7 +1349,7 @@ export default function App() {
                                 <p className="text-[10px] text-zinc-400">{p.category} → {p.subCategory} | Stock: <span className="text-zinc-950 font-black">{p.stock}</span> | ₹{p.price}</p>
                               </div>
                               <div className="flex gap-2">
-                                <button onClick={() => setEditingProduct(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl font-bold">✏️️ Edit</button>
+                                <button onClick={() => setEditingProduct(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl font-bold">✏ Edit</button>
                                 <button onClick={async () => { if(window.confirm("Delete item permanently?")) await deleteDoc(doc(db, "products", p.id)); }} className="p-2 bg-rose-50 text-rose-600 rounded-xl font-bold">🗑️ Delete</button>
                               </div>
                             </div>
@@ -1449,7 +1502,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 2-COLUMN LUXURY PRODUCT GRID (MOBILE FIRST 4:5 ASPECT RATIO) */}
+                  {/* 2-COLUMN LUXURY PRODUCT GRID */}
                   <div className="px-4 mb-8">
                     {isProductsLoading ? (
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -1554,7 +1607,7 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* RECENTLY VIEWED (ACCOUNT SPECIFIC) */}
+                  {/* RECENTLY VIEWED */}
                   {recentlyViewed.length > 0 && (
                     <div className="mx-4 my-8 p-4 bg-white rounded-3xl border border-zinc-200/80 shadow-sm space-y-3">
                       <div className="flex justify-between items-center border-b pb-2">
@@ -1682,6 +1735,13 @@ export default function App() {
                       <span className="flex items-center gap-2.5">📍 Saved Addresses (House, Landmark, Dist)</span>
                       <span>›</span>
                     </div>
+                    
+                    {/* Dedicated Direct PWA App Installer Button */}
+                    <div onClick={triggerPwaInstall} className="p-4 flex items-center justify-between cursor-pointer hover:bg-amber-50/50 bg-amber-50/20 text-amber-900">
+                      <span className="flex items-center gap-2.5 font-black">📲 Install STYLE ZONE - X App on Phone</span>
+                      <span className="bg-amber-500 text-white px-2 py-0.5 rounded-full text-[10px]">Install</span>
+                    </div>
+
                     <div onClick={() => setIsNotifOpen(true)} className="p-4 flex items-center justify-between cursor-pointer hover:bg-zinc-50">
                       <span className="flex items-center gap-2.5">🔔 Notification Settings</span>
                       <span>›</span>
@@ -1742,7 +1802,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* 1. MY PROFILE MODAL */}
+      {/* MY PROFILE MODAL */}
       {isProfileModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold text-zinc-900 shadow-2xl">
@@ -1767,7 +1827,7 @@ export default function App() {
                 <input 
                   value={custInfo.nickName} 
                   onChange={(e) => setCustInfo({...custInfo, nickName: e.target.value})} 
-                  placeholder="e.g. Younus / Boss"
+                  placeholder="e.g. Younus"
                   className="w-full p-2.5 bg-zinc-50 border rounded-xl mt-1 font-bold" 
                 />
               </div>
@@ -1820,7 +1880,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. SAVED ADDRESS MODAL */}
+      {/* SAVED ADDRESS MODAL */}
       {isAddressModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 text-xs font-bold text-zinc-900 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1905,7 +1965,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FULL SCREEN PRODUCT DETAILS MODAL (WITH SIMILAR PRODUCTS) */}
+      {/* FULL SCREEN PRODUCT DETAILS MODAL */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-white z-50 overflow-y-auto text-zinc-900 flex flex-col justify-between animate-fadeIn">
           <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm">

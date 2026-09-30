@@ -24,7 +24,7 @@ import {
   runTransaction 
 } from 'firebase/firestore';
 
-// Firebase Production Setup
+// Firebase Setup
 const firebaseConfig = {
   apiKey: "AIzaSyChwU32Co32x2BFk5XQ04Gr_230JexB2KU",
   authDomain: "daily-needs-hub-15205.firebaseapp.com",
@@ -47,7 +47,6 @@ const BRAND_TAGLINE = "DEFINE YOUR STYLE.";
 const MY_UPI_ID = "8637589429-3@ybl"; 
 const ALLOWED_PINS = ["731204", "731240", "731215", "731224", "731236", "731214", "700001", "700019"];
 
-// Authorized Admin Emails
 const ADMIN_EMAILS = [
   "sekhyounusabedin2005@gmail.com",
   "stylezone.x0@gmail.com"
@@ -88,10 +87,34 @@ const FASHION_COLLECTIONS_MAP = {
 
 const FASHION_COLORS = [
   "Black", "White", "Navy Blue", "Olive Green", "Beige", "Maroon", "Charcoal Grey",
-  "Pink", "Baby Pink", "Lavender", "Sky Blue", "Mint Green", "Peach", "Coral", "Wine", "Mustard Yellow", "Rust"
+  "Lavender", "Baby Pink", "Sky Blue", "Mustard Yellow", "Wine", "Rust", "Cream", "Mint Green"
 ];
 
-const APPAREL_SIZES = ["S", "M", "L", "XL", "XXL"];
+const FABRIC_OPTIONS = [
+  "100% French Terry Cotton (240+ GSM)",
+  "100% Combed Cotton (180 GSM)",
+  "Linen Cotton Blend",
+  "Denim / Twill Heavyweight",
+  "Polyester Spandex (Dry Fit)",
+  "Rayon / Silk Flowy Blend",
+  "Fleece / Sherpa Warm Knit",
+  "Pure Georgette / Chiffon",
+  "Breathable Mesh & EVA Sole"
+];
+
+const FIT_OPTIONS = [
+  "Oversized / Drop Shoulder Fit",
+  "Relaxed Streetwear Fit",
+  "Regular / Classic Fit",
+  "Slim Fit",
+  "Boxy Crop Fit",
+  "Skinny Fit",
+  "Straight Leg Fit",
+  "True to Size / Comfort Footwear"
+];
+
+const APPAREL_SIZES_ADULT = ["S", "M", "L", "XL", "XXL", "3XL"];
+const KIDS_CLOTHING_SIZES = ["0-6M", "6-12M", "1-2Y", "2-3Y", "3-4Y", "5-6Y", "7-8Y", "9-10Y", "11-12Y", "13-14Y"];
 const FOOTWEAR_SIZES_ADULT = ["UK 6", "UK 7", "UK 8", "UK 9", "UK 10", "UK 11"];
 const FOOTWEAR_SIZES_KIDS = ["Kids 1", "Kids 2", "Kids 3", "Kids 4", "Kids 5", "Kids 6", "Kids 7", "Kids 8", "Kids 9", "Kids 10"];
 
@@ -124,8 +147,9 @@ export default function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
 
-  // PWA Install State
+  // PWA Install State & Check
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isAlreadyInstalled, setIsAlreadyInstalled] = useState(false);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -145,10 +169,9 @@ export default function App() {
   const [showInvoice, setShowInvoice] = useState(false);
   const [completedOrderReceipt, setCompletedOrderReceipt] = useState(null);
 
-  // True High-Contrast Dark Mode State
   const [darkMode, setDarkMode] = useState(false);
 
-  // Dynamic Flash Drop Settings
+  // Flash Drop Config
   const [flashConfig, setFlashConfig] = useState({
     title: "LIMITED FLASH DROP",
     subtitle: "Extra 20% OFF on Orders ₹1499+ using code STYLE20",
@@ -179,7 +202,7 @@ export default function App() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
 
   // Admin Controls
-  const [adminSelectedDept, setAdminSelectedDept] = useState("Men");
+  const [adminProductDept, setAdminProductDept] = useState("Men");
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [adminDeptFilter, setAdminDeptFilter] = useState("All");
   const [editingProduct, setEditingProduct] = useState(null);
@@ -253,24 +276,42 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   };
 
-  // PWA Install Prompt Listener
+  // Check if App is already Installed on Phone
   useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+    if (isStandalone) {
+      setIsAlreadyInstalled(true);
+      setShowInstallBanner(false);
+    }
+
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setShowInstallBanner(true);
+      if (!isStandalone) {
+        setShowInstallBanner(true);
+      }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', () => {
+      setIsAlreadyInstalled(true);
+      setShowInstallBanner(false);
+      showToastMessage("App installed successfully! 🎉");
+    });
+
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
   const triggerPwaInstall = async () => {
+    if (isAlreadyInstalled) {
+      return showToastMessage("STYLE ZONE - X is already installed on your device! 📲", "info");
+    }
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         showToastMessage("Thank you for installing STYLE ZONE - X App! 🚀");
+        setIsAlreadyInstalled(true);
       }
       setDeferredPrompt(null);
       setShowInstallBanner(false);
@@ -493,7 +534,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [activePaymentOrder, verificationCountdown]);
 
-  // Payment Verification Sync
+  // Real-time verification listener
   useEffect(() => {
     if (!activePaymentOrder) return;
     const unsub = onSnapshot(doc(db, "orders", activePaymentOrder.id), (docSnap) => {
@@ -780,7 +821,7 @@ export default function App() {
     }
   };
 
-  // Add Product Form Handler (Fixed Blank Screen Bug)
+  // 5 Images & Dynamic Sizes per Department Add Product
   const addProduct = async (e) => {
     e.preventDefault();
     if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
@@ -802,7 +843,7 @@ export default function App() {
     e.target.querySelectorAll('input[name="adminColors"]:checked').forEach(cb => activeColorsArray.push(cb.value));
 
     try {
-      await addDoc(collection(db, "products"), { 
+      const docRef = await addDoc(collection(db, "products"), { 
         name: el.itemName.value, 
         brand: el.itemBrand.value || "STYLE ZONE - X",
         category: el.itemCategory.value,
@@ -813,14 +854,18 @@ export default function App() {
         images: imgArray, 
         availableSizes: activeSizesArray.length > 0 ? activeSizesArray : ["M", "L", "XL"],
         availableColors: activeColorsArray.length > 0 ? activeColorsArray : ["Black", "White"],
-        fabric: el.itemFabric.value || "100% Premium Cotton",
-        fit: el.itemFit.value || "Relaxed Fit",
+        fabric: el.itemFabric.value || "100% French Terry Cotton (240+ GSM)",
+        fit: el.itemFit.value || "Oversized / Drop Shoulder Fit",
         specifications: el.itemSpecs.value || "Crafted for durability and breathable comfort.",
-        isFeatured: el.isFeatured?.checked || false,
-        isTrending: el.isTrending?.checked || false,
-        isNewArrival: el.isNewArrival?.checked || false,
+        isFlashDeal: el.isFlashDeal?.checked || false,
         createdAt: new Date().toISOString()
       });
+
+      // If marked as flash deal, auto-assign to flashDrop config
+      if (el.isFlashDeal?.checked) {
+        await setDoc(doc(db, "settings", "flashDrop"), { featuredProductId: docRef.id }, { merge: true });
+      }
+
       e.target.reset();
       showToastMessage("Product published into STYLE ZONE - X catalogue!");
       setAdminTab("manage-items");
@@ -904,11 +949,13 @@ export default function App() {
     }
   };
 
+  // Edit Product Submission (Fixed Stock Grid Edit Bug)
   const handleSaveProductEdit = async (e) => {
     e.preventDefault();
     if (!isAdmin || !editingProduct) return;
     const el = e.target.elements;
     try {
+      const isFlash = el.editIsFlash?.checked || false;
       await updateDoc(doc(db, "products", editingProduct.id), {
         name: el.editName.value,
         brand: el.editBrand.value,
@@ -919,12 +966,18 @@ export default function App() {
         stock: Number(el.editStock.value),
         fabric: el.editFabric.value,
         fit: el.editFit.value,
-        specifications: el.editSpecs.value
+        specifications: el.editSpecs.value,
+        isFlashDeal: isFlash
       });
+
+      if (isFlash) {
+        await setDoc(doc(db, "settings", "flashDrop"), { featuredProductId: editingProduct.id }, { merge: true });
+      }
+
       setEditingProduct(null);
-      showToastMessage("Product details updated successfully! ✨");
+      showToastMessage("Product details & stock updated successfully! ✨");
     } catch (err) {
-      showToastMessage("Failed to update product", "error");
+      showToastMessage("Failed to update product: " + err.message, "error");
     }
   };
 
@@ -1088,8 +1141,7 @@ export default function App() {
 
   const getUPIIntentLink = () => {
     const merchantName = "STYLE ZONE X";
-    const note = "Fashion Order";
-    return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${finalPayableTotal}&tn=${encodeURIComponent(note)}&cu=INR`;
+    return `upi://pay?pa=${MY_UPI_ID}&pn=${encodeURIComponent(merchantName)}&am=${finalPayableTotal}&tn=${encodeURIComponent("STYLE ZONE X Order")}&cu=INR`;
   };
 
   const productReviews = selectedProduct ? reviews.filter(r => r.productId === selectedProduct.id) : [];
@@ -1098,6 +1150,17 @@ export default function App() {
     p.id !== selectedProduct.id && 
     (p.category === selectedProduct.category || p.subCategory === selectedProduct.subCategory)
   ).slice(0, 6) : [];
+
+  // Helper for Product Image Slide in Modal
+  const nextSlide = () => {
+    if (!selectedProduct || !selectedProduct.images) return;
+    setCurrentProductSlide(prev => (prev + 1) % selectedProduct.images.length);
+  };
+
+  const prevSlide = () => {
+    if (!selectedProduct || !selectedProduct.images) return;
+    setCurrentProductSlide(prev => (prev - 1 + selectedProduct.images.length) % selectedProduct.images.length);
+  };
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-white' : 'bg-[#FAFAF9] text-zinc-900'} pb-28 transition-colors duration-300 font-sans selection:bg-zinc-900 selection:text-white`}>
@@ -1110,8 +1173,8 @@ export default function App() {
         </div>
       )}
 
-      {/* PWA Floating Install Banner */}
-      {showInstallBanner && !isAdminUrl && (
+      {/* PWA Floating Install Banner (Hidden if already installed) */}
+      {showInstallBanner && !isAlreadyInstalled && !isAdminUrl && (
         <div className="fixed top-16 inset-x-3 md:max-w-md md:mx-auto z-40 bg-zinc-950 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between border border-zinc-700 animate-bounce">
           <div className="flex items-center gap-2.5">
             <span className="text-xl">📲</span>
@@ -1221,7 +1284,7 @@ export default function App() {
           )}
         </header>
 
-        {/* PERMANENT NON-DISAPPEARING SEARCH BAR WITH AUTO-SUGGEST */}
+        {/* PERMANENT SEARCH BAR */}
         {!isAdminUrl && (
           <div className={`px-4 py-2.5 border-b sticky top-[95px] md:top-[100px] z-30 shadow-xs ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'}`}>
             <div className="max-w-7xl mx-auto relative flex items-center gap-2">
@@ -1270,36 +1333,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Dynamic Category Sub-Pills */}
-        {!isAdminUrl && activeDepartment !== "All" && FASHION_COLLECTIONS_MAP[activeDepartment] && (
-          <div className={`px-4 py-2 border-b overflow-x-auto no-scrollbar flex items-center gap-2 ${darkMode ? 'bg-zinc-900/60 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
-            <button
-              onClick={() => setActiveCollection("All")}
-              className={`text-[11px] font-black px-3 py-1 rounded-xl transition-all whitespace-nowrap ${
-                activeCollection === "All"
-                  ? (darkMode ? 'bg-white text-zinc-950' : 'bg-zinc-950 text-white')
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              All {activeDepartment}
-            </button>
-            {FASHION_COLLECTIONS_MAP[activeDepartment].map(col => (
-              <button
-                key={col.name}
-                onClick={() => setActiveCollection(col.name)}
-                className={`text-[11px] font-bold px-3 py-1 rounded-xl transition-all whitespace-nowrap flex items-center gap-1 ${
-                  activeCollection === col.name
-                    ? (darkMode ? 'bg-white text-zinc-950' : 'bg-zinc-950 text-white')
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                <span>{col.icon}</span>
-                <span>{col.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
         <div className="w-full max-w-md md:max-w-7xl mx-auto">
 
           {/* ADMIN PORTAL GATEWAY */}
@@ -1330,11 +1363,6 @@ export default function App() {
                     >
                       Sign In with Admin Google Account
                     </button>
-                    {user && !isAdmin && (
-                      <p className="text-xs font-bold text-rose-600 pt-2">
-                        Account ({user.email}) is not authorized as Admin!
-                      </p>
-                    )}
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -1432,39 +1460,11 @@ export default function App() {
                             <input name="notifPoster" placeholder="Poster Image URL (optional)" className="w-full p-2 border rounded-xl text-xs font-medium bg-white text-zinc-900" />
                             <button type="submit" className="px-4 py-2 bg-zinc-950 text-white rounded-xl text-xs font-black">Publish Alert</button>
                           </form>
-                          
-                          <div className="space-y-1.5 pt-2">
-                            <p className="text-[10px] font-black uppercase text-zinc-400">Active Notifications ({notifications.length}):</p>
-                            {notifications.map(n => (
-                              <div key={n.id} className="flex justify-between items-center bg-white text-zinc-900 p-2 border rounded-xl text-xs">
-                                <div>
-                                  <p className="font-bold">{n.title}</p>
-                                  <p className="text-[10px] text-zinc-500">{n.desc}</p>
-                                </div>
-                                <button onClick={() => deleteDoc(doc(db, "notifications", n.id))} className="text-rose-600 font-bold p-1">🗑️</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Coupon Creator */}
-                        <div className={`p-4 rounded-2xl border space-y-3 ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
-                          <h4 className="text-xs font-black uppercase tracking-wider">🏷️ Deploy Promo Coupon</h4>
-                          <form onSubmit={handleCreateCoupon} className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <input name="coupCode" placeholder="Code (e.g. VIP30)" className="p-2 border rounded-xl text-xs font-bold bg-white text-zinc-900 uppercase" required />
-                            <select name="coupType" className="p-2 border rounded-xl text-xs font-bold bg-white text-zinc-900">
-                              <option value="fixed">Fixed ₹ Off</option>
-                              <option value="percentage">% Percentage Off</option>
-                            </select>
-                            <input name="coupValue" type="number" placeholder="Discount Amount" className="p-2 border rounded-xl text-xs font-bold bg-white text-zinc-900" required />
-                            <input name="coupMin" type="number" placeholder="Min Order (₹)" className="p-2 border rounded-xl text-xs font-bold bg-white text-zinc-900" required />
-                            <button type="submit" className="col-span-full py-2 bg-zinc-950 text-white rounded-xl text-xs font-black uppercase">Create Coupon</button>
-                          </form>
                         </div>
                       </div>
                     )}
 
-                    {/* 2. Add Stock Tab (Resolved Blank Screen) */}
+                    {/* 2. Add Stock Tab (With 5 Images, Department Specific Sizes, Fabrics, Fits, Colors) */}
                     {adminTab === "add-item" && (
                       <div className="space-y-4">
                         <h3 className="text-xs font-black uppercase tracking-wider">➕ Add Fresh Inventory Piece</h3>
@@ -1481,7 +1481,12 @@ export default function App() {
                             </div>
                             <div>
                               <label className="text-[10px] text-zinc-400 font-bold uppercase">Department</label>
-                              <select name="itemCategory" className="w-full p-2.5 border rounded-xl font-bold bg-white text-zinc-900">
+                              <select 
+                                name="itemCategory" 
+                                value={adminProductDept} 
+                                onChange={(e) => setAdminProductDept(e.target.value)}
+                                className="w-full p-2.5 border rounded-xl font-bold bg-white text-zinc-900"
+                              >
                                 {FASHION_DEPARTMENTS.slice(1).map(d => <option key={d} value={d}>{d}</option>)}
                               </select>
                             </div>
@@ -1507,28 +1512,105 @@ export default function App() {
                             </div>
                           </div>
 
+                          {/* 5 Product Images */}
                           <div className="space-y-1.5">
-                            <label className="text-[10px] text-zinc-400 font-bold uppercase">Product Images (URLs)</label>
-                            <input name="itemImg1" placeholder="Main Front Image (Required)" className="w-full p-2 border rounded-xl bg-white text-zinc-900" required />
-                            <input name="itemImg2" placeholder="Back / Side Image" className="w-full p-2 border rounded-xl bg-white text-zinc-900" />
-                            <input name="itemImg3" placeholder="Fabric Detail Image" className="w-full p-2 border rounded-xl bg-white text-zinc-900" />
+                            <label className="text-[10px] text-zinc-400 font-bold uppercase">5 Product Images (URLs)</label>
+                            <input name="itemImg1" placeholder="Image 1 (Main Front - Required)" className="w-full p-2 border rounded-xl bg-white text-zinc-900" required />
+                            <input name="itemImg2" placeholder="Image 2 (Back / Side View)" className="w-full p-2 border rounded-xl bg-white text-zinc-900" />
+                            <input name="itemImg3" placeholder="Image 3 (Fabric Detail Close-up)" className="w-full p-2 border rounded-xl bg-white text-zinc-900" />
+                            <input name="itemImg4" placeholder="Image 4 (Model / On-Body Fit)" className="w-full p-2 border rounded-xl bg-white text-zinc-900" />
+                            <input name="itemImg5" placeholder="Image 5 (Lifestyle / Packaging)" className="w-full p-2 border rounded-xl bg-white text-zinc-900" />
                           </div>
 
+                          {/* Department Specific Sizing (No Mix-ups) */}
+                          <div className="p-3 bg-zinc-800/40 rounded-2xl border border-zinc-800 space-y-1.5">
+                            <label className="text-[10px] text-amber-400 font-bold uppercase block">
+                              Available Sizes for: {adminProductDept}
+                            </label>
+                            
+                            {/* Men & Women Adult Apparel Sizes */}
+                            {(adminProductDept === "Men" || adminProductDept === "Women") && (
+                              <div className="flex flex-wrap gap-2">
+                                {APPAREL_SIZES_ADULT.map(sz => (
+                                  <label key={sz} className="flex items-center gap-1 bg-white text-zinc-900 px-2.5 py-1 border rounded-lg cursor-pointer">
+                                    <input type="checkbox" name="adminSizes" value={sz} defaultChecked={["M", "L", "XL"].includes(sz)} />
+                                    <span className="font-bold">{sz}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Kids Clothing Age Sizes */}
+                            {adminProductDept === "Kids" && (
+                              <div className="flex flex-wrap gap-2">
+                                {KIDS_CLOTHING_SIZES.map(sz => (
+                                  <label key={sz} className="flex items-center gap-1 bg-white text-zinc-900 px-2 py-1 border rounded-lg cursor-pointer">
+                                    <input type="checkbox" name="adminSizes" value={sz} defaultChecked={["2-3Y", "4-5Y"].includes(sz)} />
+                                    <span className="font-bold">{sz}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Footwear Adult & Kids Sizes */}
+                            {adminProductDept === "Footwear" && (
+                              <div className="space-y-2">
+                                <p className="text-[9px] uppercase font-bold text-zinc-400">Adult Footwear (UK Sizes):</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {FOOTWEAR_SIZES_ADULT.map(sz => (
+                                    <label key={sz} className="flex items-center gap-1 bg-white text-zinc-900 px-2 py-1 border rounded-lg cursor-pointer">
+                                      <input type="checkbox" name="adminSizes" value={sz} defaultChecked={["UK 7", "UK 8", "UK 9"].includes(sz)} />
+                                      <span className="font-bold">{sz}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                                <p className="text-[9px] uppercase font-bold text-zinc-400 pt-1">Kids Footwear Sizes:</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {FOOTWEAR_SIZES_KIDS.map(sz => (
+                                    <label key={sz} className="flex items-center gap-1 bg-white text-zinc-900 px-2 py-1 border rounded-lg cursor-pointer">
+                                      <input type="checkbox" name="adminSizes" value={sz} />
+                                      <span className="font-bold">{sz}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Clothes Colors Palette Selection */}
                           <div>
-                            <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Available Sizes</label>
-                            <div className="flex flex-wrap gap-2">
-                              {APPAREL_SIZES.concat(FOOTWEAR_SIZES_ADULT).map(sz => (
-                                <label key={sz} className="flex items-center gap-1 bg-white text-zinc-900 px-2 py-1 border rounded-lg cursor-pointer">
-                                  <input type="checkbox" name="adminSizes" value={sz} defaultChecked={["M", "L", "XL"].includes(sz)} />
-                                  <span className="font-bold">{sz}</span>
+                            <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Color Options</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {FASHION_COLORS.map(col => (
+                                <label key={col} className="flex items-center gap-1 bg-white text-zinc-900 px-2 py-0.5 border rounded-lg text-[10px] cursor-pointer">
+                                  <input type="checkbox" name="adminColors" value={col} defaultChecked={["Black", "White"].includes(col)} />
+                                  <span className="font-bold">{col}</span>
                                 </label>
                               ))}
                             </div>
                           </div>
 
+                          {/* Fabric & Fit Standard Select Dropdowns */}
                           <div className="grid grid-cols-2 gap-2">
-                            <input name="itemFabric" placeholder="Fabric (e.g. 100% Terry Cotton)" className="w-full p-2.5 border rounded-xl bg-white text-zinc-900" />
-                            <input name="itemFit" placeholder="Fit (e.g. Drop Shoulder / Relaxed)" className="w-full p-2.5 border rounded-xl bg-white text-zinc-900" />
+                            <div>
+                              <label className="text-[10px] text-zinc-400 font-bold uppercase">Fabric / Material</label>
+                              <select name="itemFabric" className="w-full p-2 border rounded-xl bg-white text-zinc-900 font-bold">
+                                {FABRIC_OPTIONS.map(fab => <option key={fab} value={fab}>{fab}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-zinc-400 font-bold uppercase">Fitting Silhouette</label>
+                              <select name="itemFit" className="w-full p-2 border rounded-xl bg-white text-zinc-900 font-bold">
+                                {FIT_OPTIONS.map(fit => <option key={fit} value={fit}>{fit}</option>)}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="flex items-center gap-2 cursor-pointer bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/30">
+                              <input type="checkbox" name="isFlashDeal" className="w-4 h-4 accent-amber-500" />
+                              <span className="font-black text-amber-400 text-xs">⚡ Feature this item in Today's Flash Drop</span>
+                            </label>
                           </div>
 
                           <textarea name="itemSpecs" placeholder="Product details & styling notes..." rows="2" className="w-full p-2.5 border rounded-xl bg-white text-zinc-900" />
@@ -1540,7 +1622,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* 3. Manage Items Stock Grid */}
+                    {/* 3. Manage Items Stock Grid (Edit Button Fully Working) */}
                     {adminTab === "manage-items" && (
                       <div className="space-y-3">
                         <div className="flex gap-2">
@@ -1557,7 +1639,7 @@ export default function App() {
                           {adminFilteredProducts.map(p => (
                             <div key={p.id} className={`p-3 border rounded-2xl flex justify-between items-center text-xs font-bold ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
                               <div>
-                                <p className="font-black text-sm">{p.name}</p>
+                                <p className="font-black text-sm">{p.name} {p.isFlashDeal && <span className="text-amber-400 text-[10px]">⚡ [Flash Drop]</span>}</p>
                                 <p className="text-[10px] text-zinc-400">{p.category} → {p.subCategory} | Stock: <span className="text-amber-500 font-black">{p.stock}</span> | ₹{p.price}</p>
                               </div>
                               <div className="flex gap-2">
@@ -1577,10 +1659,7 @@ export default function App() {
                           <div key={ord.id} className={`p-4 border rounded-2xl space-y-2 text-xs ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
                             <div className="flex justify-between items-center font-black border-b pb-1">
                               <span>Ref: #{ord.orderIdRef || ord.id.slice(0,6)}</span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-black">₹{ord.totalAmount}</span>
-                                <button onClick={() => handleDeleteOrder(ord.id)} className="p-1 text-rose-600 hover:bg-rose-100 rounded" title="Delete Order">🗑️</button>
-                              </div>
+                              <span className="text-sm font-black">₹{ord.totalAmount}</span>
                             </div>
                             <p><b>Buyer:</b> {ord.customerName} ({ord.phone})</p>
                             <p className="text-zinc-400"><b>Address:</b> {ord.address}</p>
@@ -1635,7 +1714,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            /* CUSTOMER FACING STOREFRONT INTERFACES */
+            /* CUSTOMER FACING STOREFRONT */
             <>
               {activeTab === "shop" && (
                 <>
@@ -1667,7 +1746,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* DYNAMIC FLASH SALE STRIP (CONTROLLED LIVE BY ADMIN) */}
+                  {/* DYNAMIC FLASH SALE STRIP */}
                   <div className="px-4 mb-4">
                     <div className="bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 text-white p-4 rounded-3xl flex items-center justify-between shadow-lg border border-zinc-800">
                       <div className="flex items-center gap-3">
@@ -1684,10 +1763,10 @@ export default function App() {
                   </div>
 
                   {/* SHOP BY DEPARTMENT CIRCLES */}
-                  <div className="px-4 mb-6">
+                  <div className="px-4 mb-3">
                     <div className="flex justify-between items-center mb-3">
                       <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400">SHOP BY DEPARTMENT</h3>
-                      <span className="text-[10px] font-black uppercase text-zinc-500 cursor-pointer" onClick={() => setActiveDepartment("All")}>View All</span>
+                      <span className="text-[10px] font-black uppercase text-zinc-500 cursor-pointer" onClick={() => { setActiveDepartment("All"); setActiveCollection("All"); }}>View All</span>
                     </div>
                     <div className="grid grid-cols-4 gap-2 text-center">
                       {[
@@ -1713,6 +1792,38 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+
+                  {/* SHIFTED SUB-CATEGORY PILLS: PLACED EXACTLY BELOW SHOP BY DEPARTMENT */}
+                  {activeDepartment !== "All" && FASHION_COLLECTIONS_MAP[activeDepartment] && (
+                    <div className="px-4 mb-5">
+                      <div className={`p-2 rounded-2xl border overflow-x-auto no-scrollbar flex items-center gap-2 ${darkMode ? 'bg-zinc-900/60 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
+                        <button
+                          onClick={() => setActiveCollection("All")}
+                          className={`text-[11px] font-black px-3.5 py-1.5 rounded-xl transition-all whitespace-nowrap ${
+                            activeCollection === "All"
+                              ? (darkMode ? 'bg-white text-zinc-950 shadow-sm' : 'bg-zinc-950 text-white shadow-sm')
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          All {activeDepartment}
+                        </button>
+                        {FASHION_COLLECTIONS_MAP[activeDepartment].map(col => (
+                          <button
+                            key={col.name}
+                            onClick={() => setActiveCollection(col.name)}
+                            className={`text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                              activeCollection === col.name
+                                ? (darkMode ? 'bg-white text-zinc-950 shadow-sm' : 'bg-zinc-950 text-white shadow-sm')
+                                : 'text-zinc-400 hover:text-white'
+                            }`}
+                          >
+                            <span>{col.icon}</span>
+                            <span>{col.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* 2-COLUMN LUXURY PRODUCT GRID */}
                   <div className="px-4 mb-8">
@@ -1892,7 +2003,7 @@ export default function App() {
                 </>
               )}
 
-              {/* FLIPKART-INSPIRED ACCOUNT SECTION */}
+              {/* ACCOUNT SECTION (Shows installed status) */}
               {activeTab === "account" && (
                 <div className="p-3 md:p-6 space-y-4 max-w-xl mx-auto pb-10">
                   <div className={`p-5 rounded-3xl border shadow-sm space-y-3 ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-zinc-200 text-zinc-900'}`}>
@@ -1950,10 +2061,20 @@ export default function App() {
                       <span className="flex items-center gap-2.5">📍 Saved Addresses (House, Landmark, Dist)</span>
                       <span>›</span>
                     </div>
-                    <div onClick={triggerPwaInstall} className="p-4 flex items-center justify-between cursor-pointer bg-amber-500/10 text-amber-500">
-                      <span className="flex items-center gap-2.5 font-black">📲 Install STYLE ZONE - X App on Phone</span>
-                      <span className="bg-amber-500 text-zinc-950 px-2 py-0.5 rounded-full text-[10px]">Install</span>
+
+                    {/* Dynamic PWA Button: Changes text if already installed */}
+                    <div 
+                      onClick={triggerPwaInstall} 
+                      className={`p-4 flex items-center justify-between cursor-pointer ${isAlreadyInstalled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-500'}`}
+                    >
+                      <span className="flex items-center gap-2.5 font-black">
+                        {isAlreadyInstalled ? "📲 STYLE ZONE - X App (Installed) ✓" : "📲 Install STYLE ZONE - X App on Phone"}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] ${isAlreadyInstalled ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-zinc-950'}`}>
+                        {isAlreadyInstalled ? "Installed" : "Install"}
+                      </span>
                     </div>
+
                     <div onClick={() => setIsNotifOpen(true)} className="p-4 flex items-center justify-between cursor-pointer">
                       <span className="flex items-center gap-2.5">🔔 Notification Settings</span>
                       <span>›</span>
@@ -2050,7 +2171,7 @@ export default function App() {
                 <label className="text-[10px] text-zinc-400 uppercase font-black block mb-1">Size</label>
                 <select value={sizeFilter} onChange={(e) => setSizeFilter(e.target.value)} className="w-full p-2 border rounded-xl text-xs bg-zinc-800 text-white font-bold">
                   <option value="All">All Sizes</option>
-                  {APPAREL_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                  {APPAREL_SIZES_ADULT.concat(KIDS_CLOTHING_SIZES, FOOTWEAR_SIZES_ADULT).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>
@@ -2062,7 +2183,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FLIPKART DESIGNED PROFESSIONAL CART (7TH & 8TH IMAGES EXACT MATCH) */}
+      {/* FLIPKART DESIGNED PROFESSIONAL CART */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className={`w-full max-w-md h-full p-4 shadow-2xl overflow-y-auto flex flex-col justify-between ${darkMode ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900'}`}>
@@ -2106,7 +2227,6 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Controls: Stepper, Remove, Move to Wishlist */}
                       <div className="flex items-center justify-between border-t pt-2 text-xs">
                         <div className="flex items-center border rounded-xl overflow-hidden bg-zinc-800">
                           <button onClick={() => updateCartQty(item.itemKey, -1)} className="px-2.5 py-1 text-white font-black">-</button>
@@ -2184,100 +2304,7 @@ export default function App() {
         </div>
       )}
 
-      {/* WISHLIST DRAWER */}
-      {isWishlistOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
-          <div className={`w-full max-w-md h-full p-6 shadow-2xl overflow-y-auto flex flex-col justify-between ${darkMode ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900'}`}>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center border-b pb-3">
-                <h3 className="text-base font-black uppercase tracking-widest">SAVED TO WISHLIST ({wishlist.length})</h3>
-                <button onClick={() => setIsWishlistOpen(false)} className="text-xs font-black p-1 bg-zinc-800 text-white rounded-lg">✕</button>
-              </div>
-
-              {wishlist.length === 0 ? (
-                <div className="text-center py-20 space-y-3">
-                  <span className="text-5xl block">🤍</span>
-                  <h4 className="font-black text-sm">Your Wishlist is Empty!</h4>
-                  <p className="text-xs text-zinc-400 font-bold max-w-xs mx-auto">
-                    Explore our freshest drops and tap the heart icon on any style to save it here.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-[70vh] overflow-y-auto no-scrollbar">
-                  {wishlist.map(p => (
-                    <div key={p.id} className={`flex gap-3 p-3 border rounded-2xl items-center justify-between ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
-                      <div className="w-16 h-16 rounded-xl bg-white border p-1 flex items-center justify-center shrink-0">
-                        <img src={p.images?.[0] || p.img} alt={p.name} className="w-full h-full object-contain" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-black text-xs truncate">{p.name}</h4>
-                        <p className="text-xs font-black text-amber-500 mt-0.5">₹{getDiscountedPrice(p.price, p.discount)}</p>
-                      </div>
-                      <div className="flex flex-col gap-1 shrink-0">
-                        <button 
-                          onClick={() => {
-                            addToRecentlyViewed(p);
-                            setIsWishlistOpen(false);
-                          }}
-                          className="px-2.5 py-1 bg-zinc-950 text-white rounded-lg text-[10px] font-black"
-                        >
-                          View
-                        </button>
-                        <button 
-                          onClick={() => toggleWishlist(p)}
-                          className="px-2.5 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] font-black"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* NOTIFICATIONS DRAWER WITH POSTER SUPPORT */}
-      {isNotifOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
-          <div className={`w-full max-w-md h-full p-6 shadow-2xl overflow-y-auto flex flex-col justify-between ${darkMode ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900'}`}>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center border-b pb-3">
-                <h3 className="text-base font-black uppercase tracking-widest">NOTIFICATIONS ({notifications.length})</h3>
-                <button onClick={() => setIsNotifOpen(false)} className="text-xs font-black p-1 bg-zinc-800 text-white rounded-lg">✕</button>
-              </div>
-
-              {notifications.length === 0 ? (
-                <div className="text-center py-20 space-y-2">
-                  <span className="text-4xl block">🔔</span>
-                  <p className="text-xs text-zinc-400 font-bold">No new notifications right now.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {notifications.map(n => (
-                    <div key={n.id} className={`p-3.5 border rounded-2xl space-y-2 ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
-                      {n.posterUrl && (
-                        <div className="w-full h-32 rounded-xl overflow-hidden bg-zinc-800">
-                          <img src={n.posterUrl} alt={n.title} className="w-full h-full object-cover" />
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center font-black text-xs">
-                        <span>{n.title}</span>
-                        <span className="text-[10px] text-zinc-400 font-bold">{n.date || "Today"}</span>
-                      </div>
-                      <p className="text-xs text-zinc-400 leading-relaxed font-medium">{n.desc}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PRODUCT DETAILS MODAL (WITH ACCORDIONS & CONTRAST) */}
+      {/* FULL PRODUCT DETAILS MODAL (WITH INTERACTIVE SLIDER BUTTONS & TOUCH SWIPE) */}
       {selectedProduct && (
         <div className={`fixed inset-0 z-50 overflow-y-auto flex flex-col justify-between animate-fadeIn ${darkMode ? 'bg-zinc-950 text-white' : 'bg-white text-zinc-900'}`}>
           <div className={`sticky top-0 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm ${darkMode ? 'bg-zinc-950/90 border-zinc-800' : 'bg-white/95 border-zinc-200'}`}>
@@ -2295,12 +2322,34 @@ export default function App() {
           </div>
 
           <div className="max-w-2xl mx-auto w-full p-4 space-y-6 pb-28">
+            {/* Interactive Image Slider with Left/Right Arrows */}
             <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-stone-100/80 border flex items-center justify-center p-3">
               <img 
                 src={(selectedProduct.images || [selectedProduct.img])[currentProductSlide]} 
                 alt={selectedProduct.name} 
-                className="w-full h-full object-contain" 
+                className="w-full h-full object-contain transition-all duration-300" 
               />
+              
+              {/* Left Arrow Button */}
+              {(selectedProduct.images || []).length > 1 && (
+                <button 
+                  onClick={prevSlide}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center font-black text-xl shadow-lg active:scale-90"
+                >
+                  ‹
+                </button>
+              )}
+
+              {/* Right Arrow Button */}
+              {(selectedProduct.images || []).length > 1 && (
+                <button 
+                  onClick={nextSlide}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center font-black text-xl shadow-lg active:scale-90"
+                >
+                  ›
+                </button>
+              )}
+
               {(selectedProduct.images || []).length > 1 && (
                 <div className="absolute bottom-3 right-3 bg-black/75 text-white text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm">
                   {currentProductSlide + 1} / {selectedProduct.images.length}
@@ -2308,6 +2357,7 @@ export default function App() {
               )}
             </div>
 
+            {/* Thumbnails Row */}
             {(selectedProduct.images || []).length > 1 && (
               <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                 {selectedProduct.images.map((img, idx) => (
@@ -2500,6 +2550,90 @@ export default function App() {
             >
               Buy Now →
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN EDIT PRODUCT MODAL (WITH FLASH DEAL TOGGLE & FULL CONTROL) */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className={`rounded-3xl p-6 max-w-lg w-full space-y-4 text-xs font-bold border shadow-2xl max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-zinc-200 text-zinc-900'}`}>
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-black uppercase text-sm">Edit Product SKU: {editingProduct.name}</h3>
+              <button onClick={() => setEditingProduct(null)} className="p-1 bg-zinc-800 text-white rounded">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveProductEdit} className="grid gap-3">
+              <div>
+                <label className="text-[10px] text-zinc-400 font-bold uppercase">Item Name</label>
+                <input name="editName" defaultValue={editingProduct.name} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" required />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Brand</label>
+                  <input name="editBrand" defaultValue={editingProduct.brand || "STYLE ZONE - X"} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Department</label>
+                  <select name="editCategory" defaultValue={editingProduct.category} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-black">
+                    {FASHION_DEPARTMENTS.slice(1).map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 font-bold uppercase">Sub Category</label>
+                <input name="editSubCategory" defaultValue={editingProduct.subCategory || "General"} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Price (₹)</label>
+                  <input name="editPrice" type="number" defaultValue={editingProduct.price} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" required />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Discount %</label>
+                  <input name="editDiscount" type="number" defaultValue={editingProduct.discount || 0} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Stock Count</label>
+                  <input name="editStock" type="number" defaultValue={editingProduct.stock} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" required />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Fabric</label>
+                  <select name="editFabric" defaultValue={editingProduct.fabric || FABRIC_OPTIONS[0]} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold">
+                    {FABRIC_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Fit</label>
+                  <select name="editFit" defaultValue={editingProduct.fit || FIT_OPTIONS[0]} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold">
+                    {FIT_OPTIONS.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/30">
+                  <input type="checkbox" name="editIsFlash" defaultChecked={editingProduct.isFlashDeal || false} className="w-4 h-4 accent-amber-500" />
+                  <span className="font-black text-amber-400 text-xs">⚡ Feature this item in Today's Flash Drop</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="text-[10px] text-zinc-400 font-bold uppercase">Specifications</label>
+                <textarea name="editSpecs" defaultValue={editingProduct.specifications || ""} rows="3" className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-medium" />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="submit" className="flex-1 py-3 bg-amber-500 text-zinc-950 rounded-xl font-black uppercase">Save Changes</button>
+                <button type="button" onClick={() => setEditingProduct(null)} className="px-4 py-3 bg-zinc-800 text-white rounded-xl font-black uppercase">Cancel</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2783,7 +2917,7 @@ export default function App() {
       {!isAdminUrl && (
         <nav className={`fixed bottom-0 inset-x-0 border-t p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl ${darkMode ? 'bg-zinc-950/95 border-zinc-800' : 'bg-white/95 border-zinc-200'}`}>
           <button 
-            onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); }} 
+            onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); setActiveCollection("All"); }} 
             className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'All' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
           >
             <span className="text-lg">🏠</span>
@@ -2791,7 +2925,7 @@ export default function App() {
           </button>
           
           <button 
-            onClick={() => { setActiveDepartment("Men"); setActiveTab("shop"); }} 
+            onClick={() => { setActiveDepartment("Men"); setActiveCollection("All"); setActiveTab("shop"); }} 
             className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'Men' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
           >
             <span className="text-lg">👕</span>
@@ -2799,7 +2933,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setActiveDepartment("Women"); setActiveTab("shop"); }} 
+            onClick={() => { setActiveDepartment("Women"); setActiveCollection("All"); setActiveTab("shop"); }} 
             className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'Women' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
           >
             <span className="text-lg">👗</span>

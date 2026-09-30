@@ -1,0 +1,21 @@
+{
+  "short_name": "STYLE ZONE - X",
+  "name": "STYLE ZONE - X | Fashion Store",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=192&q=80",
+      "type": "image/jpeg",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=512&q=80",
+      "type": "image/jpeg",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#09090b",
+  "display": "standalone",
+  "orientation": "portrait"
+}

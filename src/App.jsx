@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -85,9 +85,12 @@ const FASHION_COLLECTIONS_MAP = {
   ]
 };
 
+// Expanded Fashion & Streetwear Color Palette
 const FASHION_COLORS = [
   "Black", "White", "Navy Blue", "Olive Green", "Beige", "Maroon", "Charcoal Grey",
-  "Lavender", "Baby Pink", "Sky Blue", "Mustard Yellow", "Wine", "Rust", "Cream", "Mint Green"
+  "Lavender", "Baby Pink", "Sky Blue", "Mustard Yellow", "Wine", "Rust", "Cream", "Mint Green",
+  "Sage Green", "Mocha Brown", "Slate Grey", "Terracotta", "Burgundy", "Forest Green", 
+  "Royal Blue", "Lilac", "Coral", "Sand Beige", "Anthracite", "Emerald Green"
 ];
 
 const FABRIC_OPTIONS = [
@@ -122,6 +125,7 @@ export default function App() {
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]); 
   const [cart, setCart] = useState([]);
+  const [savedForLater, setSavedForLater] = useState([]); // Cart reserve / Save for later
   const [wishlist, setWishlist] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -203,9 +207,15 @@ export default function App() {
 
   // Admin Controls
   const [adminProductDept, setAdminProductDept] = useState("Men");
+  const [adminSubCategoryChoice, setAdminSubCategoryChoice] = useState("");
+  const [adminCustomSubCategory, setAdminCustomSubCategory] = useState("");
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [adminDeptFilter, setAdminDeptFilter] = useState("All");
   const [editingProduct, setEditingProduct] = useState(null);
+  const [editProductDept, setEditProductDept] = useState("Men");
+  const [editSubCategoryChoice, setEditSubCategoryChoice] = useState("");
+
+  const sliderRef = useRef(null);
 
   const [custInfo, setCustInfo] = useState({ 
     name: '', 
@@ -221,7 +231,6 @@ export default function App() {
     pin: '' 
   });
 
-  // 5 High-Definition Advertising Posters
   const [heroSlides] = useState([
     {
       id: 1,
@@ -276,7 +285,75 @@ export default function App() {
     setTimeout(() => setToast(null), 3200);
   };
 
-  // Check if App is already Installed on Phone
+  // BACK NAVIGATION FIX: Push history states and listen to back/backspace to avoid closing app
+  const navigateWithHistory = (actionName) => {
+    window.history.pushState({ modal: actionName }, "");
+  };
+
+  useEffect(() => {
+    const handlePopState = (e) => {
+      if (selectedProduct) {
+        setSelectedProduct(null);
+        return;
+      }
+      if (isCartOpen) {
+        setIsCartOpen(false);
+        return;
+      }
+      if (isWishlistOpen) {
+        setIsWishlistOpen(false);
+        return;
+      }
+      if (isFilterDrawerOpen) {
+        setIsFilterDrawerOpen(false);
+        return;
+      }
+      if (isProfileModalOpen) {
+        setIsProfileModalOpen(false);
+        return;
+      }
+      if (isAddressModalOpen) {
+        setIsAddressModalOpen(false);
+        return;
+      }
+      if (showSizeGuide) {
+        setShowSizeGuide(false);
+        return;
+      }
+      if (showSupportModal) {
+        setShowSupportModal(false);
+        return;
+      }
+      if (activeTab !== "shop") {
+        setActiveTab("shop");
+        return;
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [
+    selectedProduct, isCartOpen, isWishlistOpen, isFilterDrawerOpen, 
+    isProfileModalOpen, isAddressModalOpen, showSizeGuide, showSupportModal, activeTab
+  ]);
+
+  // Handle open helpers with history push
+  const openProductModal = (p) => {
+    addToRecentlyViewed(p);
+    navigateWithHistory("product");
+  };
+
+  const openCartModal = () => {
+    setIsCartOpen(true);
+    navigateWithHistory("cart");
+  };
+
+  const openWishlistModal = () => {
+    setIsWishlistOpen(true);
+    navigateWithHistory("wishlist");
+  };
+
+  // PWA Check
   useEffect(() => {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
     if (isStandalone) {
@@ -348,11 +425,7 @@ export default function App() {
         }
         try {
           const adminDoc = await getDoc(doc(db, "admins", user.uid));
-          if (adminDoc.exists()) {
-            setIsAdmin(true);
-          } else {
-            setIsAdmin(false);
-          }
+          setIsAdmin(adminDoc.exists());
         } catch (e) {
           setIsAdmin(false);
         }
@@ -368,7 +441,11 @@ export default function App() {
     if (user && !user.isAnonymous) {
       const loadUserCloudData = async () => {
         const cartDoc = await getDoc(doc(db, "carts", user.uid));
-        if (cartDoc.exists()) setCart(cartDoc.data().items || []);
+        if (cartDoc.exists()) {
+          const data = cartDoc.data();
+          setCart(data.items || []);
+          setSavedForLater(data.savedForLater || []);
+        }
         
         const profileDoc = await getDoc(doc(db, "profiles", user.uid));
         if (profileDoc.exists()) {
@@ -403,6 +480,12 @@ export default function App() {
       } else {
         setCart([]);
       }
+      const localSaved = localStorage.getItem("szx_guest_saved_later");
+      if (localSaved) {
+        try { setSavedForLater(JSON.parse(localSaved)); } catch(e) {}
+      } else {
+        setSavedForLater([]);
+      }
       const localWish = localStorage.getItem("szx_guest_wishlist");
       if (localWish) {
         try { setWishlist(JSON.parse(localWish)); } catch(e) {}
@@ -422,12 +505,14 @@ export default function App() {
     }
   }, [user]);
 
-  const syncCart = async (updatedCart) => {
+  const syncCart = async (updatedCart, updatedSaved = savedForLater) => {
     setCart(updatedCart);
+    setSavedForLater(updatedSaved);
     if (user && !user.isAnonymous) {
-      await setDoc(doc(db, "carts", user.uid), { items: updatedCart }, { merge: true });
+      await setDoc(doc(db, "carts", user.uid), { items: updatedCart, savedForLater: updatedSaved }, { merge: true });
     } else {
       localStorage.setItem("szx_guest_cart", JSON.stringify(updatedCart));
+      localStorage.setItem("szx_guest_saved_later", JSON.stringify(updatedSaved));
     }
   };
 
@@ -570,6 +655,7 @@ export default function App() {
     setUser(null);
     setIsAdmin(false);
     setCart([]);
+    setSavedForLater([]);
     setWishlist([]);
     setRecentlyViewed([]);
     setCustInfo({ 
@@ -611,11 +697,16 @@ export default function App() {
     return Math.round(price - (price * discount) / 100);
   };
 
-  const addToCart = (p, quantity = 1) => {
-    if (p.stock <= 0) return showToastMessage("Selected piece is currently out of stock!", "error");
+  // ADD TO BAG
+  const addToCart = (p, quantity = 1, silent = false) => {
+    if (p.stock <= 0) {
+      showToastMessage("Selected piece is currently out of stock!", "error");
+      return false;
+    }
 
     if (p.availableSizes && p.availableSizes.length > 0 && !selectedSizes[p.id]) {
-      return showToastMessage("Please select your Size to proceed!", "error");
+      showToastMessage("Please select your Size to proceed!", "error");
+      return false;
     }
 
     const chosenSize = selectedSizes[p.id] || "Standard";
@@ -626,7 +717,10 @@ export default function App() {
     let updatedCart = [];
 
     if (exist) {
-      if (exist.qty + quantity > p.stock) return showToastMessage("Stock limit reached for this variant!", "error");
+      if (exist.qty + quantity > p.stock) {
+        showToastMessage("Stock limit reached for this variant!", "error");
+        return false;
+      }
       updatedCart = cart.map(x => (x.itemKey === itemKey) ? { ...exist, qty: exist.qty + quantity } : x);
     } else {
       updatedCart = [...cart, { 
@@ -638,7 +732,42 @@ export default function App() {
       }];
     }
     syncCart(updatedCart);
-    showToastMessage(`Added ${quantity} piece to bag! 🛍️`);
+    if (!silent) showToastMessage(`Added ${quantity} piece to bag! 🛍️`);
+    return true;
+  };
+
+  // SAVE FOR LATER (CART RESERVE)
+  const saveItemForLater = (p) => {
+    const chosenSize = selectedSizes[p.id] || "Standard";
+    const chosenColor = selectedColors[p.id] || (p.availableColors && p.availableColors[0]) || "Default";
+    const itemKey = `${p.id}-${chosenSize}-${chosenColor}`;
+
+    const existsInSaved = savedForLater.find(x => x.itemKey === itemKey);
+    if (!existsInSaved) {
+      const updatedSaved = [...savedForLater, {
+        ...p,
+        itemKey,
+        selectedSize: chosenSize,
+        selectedColor: chosenColor
+      }];
+      syncCart(cart, updatedSaved);
+      showToastMessage("Saved in Cart for later shopping! 🕒");
+    } else {
+      showToastMessage("Item already reserved in Cart for later!", "info");
+    }
+  };
+
+  const moveSavedToBag = (item) => {
+    const updatedSaved = savedForLater.filter(x => x.itemKey !== item.itemKey);
+    const updatedCart = [...cart, { ...item, qty: 1 }];
+    syncCart(updatedCart, updatedSaved);
+    showToastMessage("Moved back into your active shopping bag! 🛍️");
+  };
+
+  const removeSavedItem = (itemKey) => {
+    const updatedSaved = savedForLater.filter(x => x.itemKey !== itemKey);
+    syncCart(cart, updatedSaved);
+    showToastMessage("Item removed from saved list.");
   };
 
   const updateCartQty = (itemKey, delta) => {
@@ -821,7 +950,7 @@ export default function App() {
     }
   };
 
-  // 5 Images & Dynamic Sizes per Department Add Product
+  // ADD PRODUCT (FIXED FLASH DEAL ERROR + DYNAMIC SUB-CATEGORY)
   const addProduct = async (e) => {
     e.preventDefault();
     if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
@@ -842,12 +971,18 @@ export default function App() {
     const activeColorsArray = [];
     e.target.querySelectorAll('input[name="adminColors"]:checked').forEach(cb => activeColorsArray.push(cb.value));
 
+    const finalSubCategory = adminSubCategoryChoice === "Custom" || !adminSubCategoryChoice 
+      ? (adminCustomSubCategory.trim() || "General") 
+      : adminSubCategoryChoice;
+
     try {
+      const isFlash = el.isFlashDeal?.checked || false;
+
       const docRef = await addDoc(collection(db, "products"), { 
         name: el.itemName.value, 
         brand: el.itemBrand.value || "STYLE ZONE - X",
-        category: el.itemCategory.value,
-        subCategory: el.itemSubCategory.value || "General",
+        category: adminProductDept,
+        subCategory: finalSubCategory,
         price: Number(el.itemPrice.value), 
         discount: Number(el.itemDiscount.value) || 0, 
         stock: Number(el.itemStock.value), 
@@ -857,16 +992,22 @@ export default function App() {
         fabric: el.itemFabric.value || "100% French Terry Cotton (240+ GSM)",
         fit: el.itemFit.value || "Oversized / Drop Shoulder Fit",
         specifications: el.itemSpecs.value || "Crafted for durability and breathable comfort.",
-        isFlashDeal: el.isFlashDeal?.checked || false,
+        isFlashDeal: isFlash,
         createdAt: new Date().toISOString()
       });
 
-      // If marked as flash deal, auto-assign to flashDrop config
-      if (el.isFlashDeal?.checked) {
-        await setDoc(doc(db, "settings", "flashDrop"), { featuredProductId: docRef.id }, { merge: true });
+      // Fixed Flash Drop Safe Execution
+      if (isFlash) {
+        try {
+          await setDoc(doc(db, "settings", "flashDrop"), { featuredProductId: docRef.id }, { merge: true });
+        } catch (flashErr) {
+          console.warn("Flash drop setting sync notice:", flashErr.message);
+        }
       }
 
       e.target.reset();
+      setAdminSubCategoryChoice("");
+      setAdminCustomSubCategory("");
       showToastMessage("Product published into STYLE ZONE - X catalogue!");
       setAdminTab("manage-items");
     } catch (error) {
@@ -892,7 +1033,6 @@ export default function App() {
     }
   };
 
-  // Notification with Poster
   const handleCreateNotification = async (e) => {
     e.preventDefault();
     if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
@@ -915,7 +1055,6 @@ export default function App() {
     }
   };
 
-  // Flash Drop Controller Save
   const handleUpdateFlashDrop = async (e) => {
     e.preventDefault();
     if (!isAdmin) return showToastMessage("Admin required!", "error");
@@ -937,30 +1076,20 @@ export default function App() {
     }
   };
 
-  const handleDeleteOrder = async (orderId) => {
-    if (!isAdmin) return showToastMessage("Admin privileges required!", "error");
-    if (window.confirm("Permanently delete this order record? This cannot be undone.")) {
-      try {
-        await deleteDoc(doc(db, "orders", orderId));
-        showToastMessage("Order deleted from database!");
-      } catch (err) {
-        showToastMessage("Failed to delete order", "error");
-      }
-    }
-  };
-
-  // Edit Product Submission (Fixed Stock Grid Edit Bug)
+  // Fixed Edit Product Submission
   const handleSaveProductEdit = async (e) => {
     e.preventDefault();
     if (!isAdmin || !editingProduct) return;
     const el = e.target.elements;
     try {
       const isFlash = el.editIsFlash?.checked || false;
+      const subCatVal = editSubCategoryChoice || el.editSubCategoryCustom?.value || editingProduct.subCategory || "General";
+
       await updateDoc(doc(db, "products", editingProduct.id), {
         name: el.editName.value,
         brand: el.editBrand.value,
-        category: el.editCategory.value,
-        subCategory: el.editSubCategory.value,
+        category: editProductDept,
+        subCategory: subCatVal,
         price: Number(el.editPrice.value),
         discount: Number(el.editDiscount.value) || 0,
         stock: Number(el.editStock.value),
@@ -971,7 +1100,9 @@ export default function App() {
       });
 
       if (isFlash) {
-        await setDoc(doc(db, "settings", "flashDrop"), { featuredProductId: editingProduct.id }, { merge: true });
+        try {
+          await setDoc(doc(db, "settings", "flashDrop"), { featuredProductId: editingProduct.id }, { merge: true });
+        } catch (e) {}
       }
 
       setEditingProduct(null);
@@ -1146,20 +1277,35 @@ export default function App() {
 
   const productReviews = selectedProduct ? reviews.filter(r => r.productId === selectedProduct.id) : [];
 
-  const similarProducts = selectedProduct ? products.filter(p => 
-    p.id !== selectedProduct.id && 
-    (p.category === selectedProduct.category || p.subCategory === selectedProduct.subCategory)
-  ).slice(0, 6) : [];
+  // SMART SIMILAR PRODUCTS (FIXED: T-SHIRT WON'T SHOW SHOES)
+  const similarProducts = selectedProduct ? products.filter(p => {
+    if (p.id === selectedProduct.id) return false;
+    // Strict priority: Same category & same subCategory
+    if (selectedProduct.subCategory && selectedProduct.subCategory !== "General") {
+      return p.category === selectedProduct.category && p.subCategory === selectedProduct.subCategory;
+    }
+    // Fallback: strictly keep footwear separated from garments
+    if (selectedProduct.category === "Footwear") {
+      return p.category === "Footwear";
+    }
+    return p.category === selectedProduct.category && p.category !== "Footwear";
+  }).slice(0, 6) : [];
 
-  // Helper for Product Image Slide in Modal
-  const nextSlide = () => {
-    if (!selectedProduct || !selectedProduct.images) return;
-    setCurrentProductSlide(prev => (prev + 1) % selectedProduct.images.length);
+  // Helper for scroll sync in product slider
+  const handleScrollCarousel = (e) => {
+    const el = e.target;
+    const slideIdx = Math.round(el.scrollLeft / el.clientWidth);
+    setCurrentProductSlide(slideIdx);
   };
 
-  const prevSlide = () => {
-    if (!selectedProduct || !selectedProduct.images) return;
-    setCurrentProductSlide(prev => (prev - 1 + selectedProduct.images.length) % selectedProduct.images.length);
+  const scrollToIndex = (idx) => {
+    if (sliderRef.current) {
+      sliderRef.current.scrollTo({
+        left: idx * sliderRef.current.clientWidth,
+        behavior: 'smooth'
+      });
+      setCurrentProductSlide(idx);
+    }
   };
 
   return (
@@ -1173,7 +1319,7 @@ export default function App() {
         </div>
       )}
 
-      {/* PWA Floating Install Banner (Hidden if already installed) */}
+      {/* PWA Floating Install Banner */}
       {showInstallBanner && !isAlreadyInstalled && !isAdminUrl && (
         <div className="fixed top-16 inset-x-3 md:max-w-md md:mx-auto z-40 bg-zinc-950 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between border border-zinc-700 animate-bounce">
           <div className="flex items-center gap-2.5">
@@ -1203,7 +1349,7 @@ export default function App() {
       {/* Main Container */}
       <div className="w-full max-w-7xl mx-auto">
         
-        {/* PERMANENT HIGH-VISIBILITY LUXURY HEADER */}
+        {/* PERMANENT HIGH-VISIBILITY HEADER */}
         <header className={`${darkMode ? 'bg-zinc-950/95 border-zinc-800' : 'bg-white/95 border-zinc-200'} backdrop-blur-md sticky top-0 z-40 border-b w-full shadow-sm`}>
           <div className="px-4 py-3 flex items-center justify-between max-w-7xl mx-auto">
             <div 
@@ -1234,11 +1380,21 @@ export default function App() {
                     🔔 {notifications.length > 0 && <span className="absolute -top-1 -right-1 bg-amber-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{notifications.length}</span>}
                   </button>
                   <button 
-                    onClick={() => setIsWishlistOpen(true)} 
+                    onClick={openWishlistModal} 
                     className={`p-2.5 rounded-full text-xs relative transition-all active:scale-95 ${darkMode ? 'bg-zinc-900 text-zinc-100 hover:bg-zinc-800' : 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200'}`} 
                     title="Wishlist"
                   >
                     ❤️ {wishlist.length > 0 && <span className="absolute -top-1 -right-1 bg-amber-600 text-white text-[8px] w-4 h-4 rounded-full flex items-center justify-center font-black">{wishlist.length}</span>}
+                  </button>
+
+                  {/* Header Cart Icon (Always prominent, user profile logo removed) */}
+                  <button 
+                    onClick={openCartModal} 
+                    className={`p-2.5 px-3 rounded-full text-xs relative transition-all active:scale-95 flex items-center gap-1 font-black ${darkMode ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-zinc-950 text-white shadow-sm'}`} 
+                    title="View Cart / Bag"
+                  >
+                    <span>🛍️</span>
+                    <span className="text-[11px]">{cart.length}</span>
                   </button>
                 </>
               )}
@@ -1246,11 +1402,6 @@ export default function App() {
               {!user && !isAdminUrl && (
                 <button onClick={handleGoogleLogin} className="bg-zinc-950 text-white border border-zinc-700 text-[11px] font-black px-4 py-2 rounded-xl shadow transition-all active:scale-95">
                   Sign In
-                </button>
-              )}
-              {user && !isAdminUrl && (
-                <button onClick={() => setActiveTab("account")} className={`p-2 rounded-full text-xs ${darkMode ? 'bg-zinc-900' : 'bg-zinc-100'}`} title="Profile">
-                  👤
                 </button>
               )}
               
@@ -1284,7 +1435,7 @@ export default function App() {
           )}
         </header>
 
-        {/* PERMANENT SEARCH BAR */}
+        {/* PERMANENT MODERN SEARCH BAR */}
         {!isAdminUrl && (
           <div className={`px-4 py-2.5 border-b sticky top-[95px] md:top-[100px] z-30 shadow-xs ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-white border-zinc-200'}`}>
             <div className="max-w-7xl mx-auto relative flex items-center gap-2">
@@ -1292,7 +1443,7 @@ export default function App() {
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 text-sm">🔍</span>
                 <input 
                   type="text" 
-                  placeholder="Search dresses, oversized tees, sneakers, kurtis..." 
+                  placeholder="Search oversized tees, sneakers, kurtis, cargo pants..." 
                   value={search}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
@@ -1300,13 +1451,31 @@ export default function App() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
+
+              {/* ULTRA-MODERN VOICE SEARCH SVG MIC BUTTON */}
               <button 
                 onClick={startVoiceSearch} 
-                className={`p-2.5 px-3 rounded-2xl border text-sm transition-all shadow-sm ${isListening ? 'bg-rose-600 text-white animate-pulse' : (darkMode ? 'bg-zinc-900 text-zinc-200 border-zinc-800' : 'bg-zinc-100 text-zinc-800 border-zinc-200')}`}
+                className={`relative p-2.5 px-3 rounded-2xl border transition-all duration-300 flex items-center justify-center shadow-sm ${
+                  isListening 
+                    ? 'bg-rose-600 text-white border-rose-500 ring-4 ring-rose-500/30 animate-pulse' 
+                    : (darkMode ? 'bg-zinc-900 text-amber-400 border-zinc-800 hover:border-zinc-700' : 'bg-zinc-100 text-zinc-800 border-zinc-300 hover:bg-zinc-200')
+                }`}
                 title="Voice Search"
               >
-                🎙️
+                {isListening ? (
+                  <div className="flex items-center gap-1 h-5">
+                    <span className="w-1 bg-white rounded-full animate-bounce h-3"></span>
+                    <span className="w-1 bg-white rounded-full animate-bounce h-5 delay-75"></span>
+                    <span className="w-1 bg-white rounded-full animate-bounce h-4 delay-150"></span>
+                  </div>
+                ) : (
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                  </svg>
+                )}
               </button>
+
               <button 
                 onClick={() => setIsFilterDrawerOpen(true)}
                 className={`p-2.5 px-3 rounded-2xl border text-sm transition-all shadow-sm ${darkMode ? 'bg-zinc-900 text-zinc-200 border-zinc-800' : 'bg-zinc-100 text-zinc-800 border-zinc-200'}`}
@@ -1464,7 +1633,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* 2. Add Stock Tab (With 5 Images, Department Specific Sizes, Fabrics, Fits, Colors) */}
+                    {/* 2. Add Stock Tab (Fixed Flash Deal & Dynamic Sub-Categories) */}
                     {adminTab === "add-item" && (
                       <div className="space-y-4">
                         <h3 className="text-xs font-black uppercase tracking-wider">➕ Add Fresh Inventory Piece</h3>
@@ -1484,7 +1653,10 @@ export default function App() {
                               <select 
                                 name="itemCategory" 
                                 value={adminProductDept} 
-                                onChange={(e) => setAdminProductDept(e.target.value)}
+                                onChange={(e) => {
+                                  setAdminProductDept(e.target.value);
+                                  setAdminSubCategoryChoice("");
+                                }}
                                 className="w-full p-2.5 border rounded-xl font-bold bg-white text-zinc-900"
                               >
                                 {FASHION_DEPARTMENTS.slice(1).map(d => <option key={d} value={d}>{d}</option>)}
@@ -1492,9 +1664,31 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div>
-                            <label className="text-[10px] text-zinc-400 font-bold uppercase">Sub-Category Collection</label>
-                            <input name="itemSubCategory" placeholder="e.g. Oversized T-Shirts / Sneakers" className="w-full p-2.5 border rounded-xl font-bold bg-white text-zinc-900" />
+                          {/* DYNAMIC SUB-CATEGORY SELECTION */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-zinc-400 font-bold uppercase">Sub-Category Collection</label>
+                              <select 
+                                value={adminSubCategoryChoice} 
+                                onChange={(e) => setAdminSubCategoryChoice(e.target.value)}
+                                className="w-full p-2.5 border rounded-xl font-bold bg-white text-zinc-900"
+                              >
+                                <option value="">Select Pre-defined Option</option>
+                                {FASHION_COLLECTIONS_MAP[adminProductDept]?.map(c => (
+                                  <option key={c.name} value={c.name}>{c.icon} {c.name}</option>
+                                ))}
+                                <option value="Custom">+ Custom Sub-Category</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-zinc-400 font-bold uppercase">Custom Sub-Category Name</label>
+                              <input 
+                                value={adminCustomSubCategory} 
+                                onChange={(e) => setAdminCustomSubCategory(e.target.value)}
+                                placeholder="Type custom name if not in list" 
+                                className="w-full p-2.5 border rounded-xl font-bold bg-white text-zinc-900" 
+                              />
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-3 gap-2">
@@ -1522,13 +1716,12 @@ export default function App() {
                             <input name="itemImg5" placeholder="Image 5 (Lifestyle / Packaging)" className="w-full p-2 border rounded-xl bg-white text-zinc-900" />
                           </div>
 
-                          {/* Department Specific Sizing (No Mix-ups) */}
+                          {/* Department Specific Sizing */}
                           <div className="p-3 bg-zinc-800/40 rounded-2xl border border-zinc-800 space-y-1.5">
                             <label className="text-[10px] text-amber-400 font-bold uppercase block">
                               Available Sizes for: {adminProductDept}
                             </label>
                             
-                            {/* Men & Women Adult Apparel Sizes */}
                             {(adminProductDept === "Men" || adminProductDept === "Women") && (
                               <div className="flex flex-wrap gap-2">
                                 {APPAREL_SIZES_ADULT.map(sz => (
@@ -1540,7 +1733,6 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Kids Clothing Age Sizes */}
                             {adminProductDept === "Kids" && (
                               <div className="flex flex-wrap gap-2">
                                 {KIDS_CLOTHING_SIZES.map(sz => (
@@ -1552,7 +1744,6 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Footwear Adult & Kids Sizes */}
                             {adminProductDept === "Footwear" && (
                               <div className="space-y-2">
                                 <p className="text-[9px] uppercase font-bold text-zinc-400">Adult Footwear (UK Sizes):</p>
@@ -1577,10 +1768,10 @@ export default function App() {
                             )}
                           </div>
 
-                          {/* Clothes Colors Palette Selection */}
+                          {/* Clothes Colors Palette Selection (Expanded) */}
                           <div>
-                            <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Color Options</label>
-                            <div className="flex flex-wrap gap-1.5">
+                            <label className="text-[10px] text-zinc-400 font-bold uppercase block mb-1">Color Options (Select Applicable)</label>
+                            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1.5 bg-zinc-800/30 rounded-xl border border-zinc-800">
                               {FASHION_COLORS.map(col => (
                                 <label key={col} className="flex items-center gap-1 bg-white text-zinc-900 px-2 py-0.5 border rounded-lg text-[10px] cursor-pointer">
                                   <input type="checkbox" name="adminColors" value={col} defaultChecked={["Black", "White"].includes(col)} />
@@ -1590,7 +1781,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Fabric & Fit Standard Select Dropdowns */}
+                          {/* Fabric & Fit Standard Select */}
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="text-[10px] text-zinc-400 font-bold uppercase">Fabric / Material</label>
@@ -1622,7 +1813,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* 3. Manage Items Stock Grid (Edit Button Fully Working) */}
+                    {/* 3. Manage Items Stock Grid */}
                     {adminTab === "manage-items" && (
                       <div className="space-y-3">
                         <div className="flex gap-2">
@@ -1643,7 +1834,16 @@ export default function App() {
                                 <p className="text-[10px] text-zinc-400">{p.category} → {p.subCategory} | Stock: <span className="text-amber-500 font-black">{p.stock}</span> | ₹{p.price}</p>
                               </div>
                               <div className="flex gap-2">
-                                <button onClick={() => setEditingProduct(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl font-bold">✏ Edit</button>
+                                <button 
+                                  onClick={() => {
+                                    setEditingProduct(p);
+                                    setEditProductDept(p.category || "Men");
+                                    setEditSubCategoryChoice(p.subCategory || "");
+                                  }} 
+                                  className="p-2 bg-blue-50 text-blue-600 rounded-xl font-bold"
+                                >
+                                  ✏ Edit
+                                </button>
                                 <button onClick={async () => { if(window.confirm("Delete item permanently?")) await deleteDoc(doc(db, "products", p.id)); }} className="p-2 bg-rose-50 text-rose-600 rounded-xl font-bold">🗑️ Delete</button>
                               </div>
                             </div>
@@ -1793,7 +1993,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* SHIFTED SUB-CATEGORY PILLS: PLACED EXACTLY BELOW SHOP BY DEPARTMENT */}
+                  {/* SUB-CATEGORY PILLS */}
                   {activeDepartment !== "All" && FASHION_COLLECTIONS_MAP[activeDepartment] && (
                     <div className="px-4 mb-5">
                       <div className={`p-2 rounded-2xl border overflow-x-auto no-scrollbar flex items-center gap-2 ${darkMode ? 'bg-zinc-900/60 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
@@ -1825,7 +2025,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* 2-COLUMN LUXURY PRODUCT GRID */}
+                  {/* 2-COLUMN LUXURY PRODUCT GRID (WITH TRIPLE ACTION BUTTONS) */}
                   <div className="px-4 mb-8">
                     {isProductsLoading ? (
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -1859,7 +2059,7 @@ export default function App() {
                               >
                                 <div 
                                   className="relative aspect-[4/5] rounded-xl overflow-hidden bg-stone-100/70 cursor-pointer flex items-center justify-center p-2 mb-2"
-                                  onClick={() => addToRecentlyViewed(p)}
+                                  onClick={() => openProductModal(p)}
                                 >
                                   <img 
                                     src={mainImg} 
@@ -1886,7 +2086,7 @@ export default function App() {
                                     {p.brand || "STYLE ZONE - X"}
                                   </p>
                                   <h4 
-                                    onClick={() => addToRecentlyViewed(p)} 
+                                    onClick={() => openProductModal(p)} 
                                     className="text-xs md:text-sm font-bold line-clamp-2 leading-snug cursor-pointer hover:underline"
                                   >
                                     {p.name}
@@ -1894,7 +2094,7 @@ export default function App() {
 
                                   <div className="flex items-center gap-1 text-[10px] text-amber-500 font-bold">
                                     <span>★ 4.8</span>
-                                    <span className="text-zinc-400 font-medium">(24)</span>
+                                    <span className="text-zinc-400 font-medium">({p.subCategory || "Style"})</span>
                                   </div>
 
                                   <div className="pt-0.5">
@@ -1916,14 +2116,34 @@ export default function App() {
                                   </div>
                                 </div>
 
-                                <div className="mt-2.5 pt-1">
+                                {/* TRIPLE ACTION PRODUCT BUTTONS: Buy Now + Add to Bag + Save in Cart */}
+                                <div className="mt-2.5 pt-1 space-y-1.5">
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <button 
+                                      onClick={() => {
+                                        const success = addToCart(p, 1, true);
+                                        if (success) openCartModal();
+                                      }}
+                                      className="py-1.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black text-[10px] uppercase rounded-xl transition-all shadow-sm active:scale-95"
+                                    >
+                                      Buy Now
+                                    </button>
+                                    <button 
+                                      onClick={() => addToCart(p, 1)}
+                                      className={`py-1.5 font-black text-[10px] uppercase rounded-xl transition-all active:scale-95 ${
+                                        darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300'
+                                      }`}
+                                    >
+                                      + Bag
+                                    </button>
+                                  </div>
+
+                                  {/* Save for later / Cart reservation */}
                                   <button 
-                                    onClick={() => addToRecentlyViewed(p)} 
-                                    className={`w-full py-2 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all active:scale-95 ${
-                                      darkMode ? 'bg-zinc-800 hover:bg-white hover:text-zinc-950 text-zinc-100' : 'bg-zinc-100 hover:bg-zinc-950 hover:text-white text-zinc-900'
-                                    }`}
+                                    onClick={() => saveItemForLater(p)}
+                                    className="w-full py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-400 hover:text-amber-500 border border-dashed border-zinc-700 rounded-lg"
                                   >
-                                    Quick View
+                                    🕒 Save in Cart for Later
                                   </button>
                                 </div>
                               </div>
@@ -1947,7 +2167,7 @@ export default function App() {
                         {recentlyViewed.map(rv => (
                           <div 
                             key={rv.id} 
-                            onClick={() => addToRecentlyViewed(rv)} 
+                            onClick={() => openProductModal(rv)} 
                             className="w-28 shrink-0 cursor-pointer text-center group"
                           >
                             <div className="aspect-[4/5] w-full rounded-2xl overflow-hidden border border-zinc-800 bg-stone-100/70 p-1.5 flex items-center justify-center mb-1 group-hover:border-zinc-500 transition-all">
@@ -2003,7 +2223,57 @@ export default function App() {
                 </>
               )}
 
-              {/* ACCOUNT SECTION (Shows installed status) */}
+              {/* CATEGORIES CENTRALIZED BROWSE SCREEN */}
+              {activeTab === "categories" && (
+                <div className="p-4 max-w-2xl mx-auto space-y-6 pb-20">
+                  <div className="border-b pb-3">
+                    <h2 className="text-lg font-black uppercase tracking-wider">Explore Collections & Categories</h2>
+                    <p className="text-xs text-zinc-400 font-bold">Browse tailored wardrobe essentials across all sections</p>
+                  </div>
+
+                  {["Men", "Women", "Kids", "Footwear"].map(dept => (
+                    <div key={dept} className={`p-4 rounded-3xl border space-y-3 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-zinc-200'}`}>
+                      <div className="flex justify-between items-center">
+                        <h3 className="font-black text-sm uppercase tracking-wider flex items-center gap-2">
+                          <span>{dept === "Men" ? "👕" : dept === "Women" ? "👗" : dept === "Kids" ? "🧒" : "👟"}</span>
+                          <span>{dept}</span>
+                        </h3>
+                        <button 
+                          onClick={() => {
+                            setActiveDepartment(dept);
+                            setActiveCollection("All");
+                            setActiveTab("shop");
+                          }}
+                          className="text-[10px] font-black uppercase text-amber-500"
+                        >
+                          View All {dept} →
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {FASHION_COLLECTIONS_MAP[dept]?.map(sub => (
+                          <div 
+                            key={sub.name} 
+                            onClick={() => {
+                              setActiveDepartment(dept);
+                              setActiveCollection(sub.name);
+                              setActiveTab("shop");
+                            }}
+                            className={`p-3 rounded-2xl border flex items-center gap-2 cursor-pointer transition-colors active:scale-95 ${
+                              darkMode ? 'bg-zinc-950 border-zinc-800 hover:border-zinc-700' : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <span className="text-lg">{sub.icon}</span>
+                            <span className="text-xs font-bold truncate">{sub.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ACCOUNT SECTION */}
               {activeTab === "account" && (
                 <div className="p-3 md:p-6 space-y-4 max-w-xl mx-auto pb-10">
                   <div className={`p-5 rounded-3xl border shadow-sm space-y-3 ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-zinc-200 text-zinc-900'}`}>
@@ -2039,7 +2309,7 @@ export default function App() {
                         </div>
                       </div>
                       <div 
-                        onClick={() => setIsWishlistOpen(true)}
+                        onClick={openWishlistModal}
                         className={`p-3 border rounded-2xl flex items-center gap-2.5 cursor-pointer transition-colors ${darkMode ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}
                       >
                         <span className="text-xl text-rose-600">❤️</span>
@@ -2062,7 +2332,6 @@ export default function App() {
                       <span>›</span>
                     </div>
 
-                    {/* Dynamic PWA Button: Changes text if already installed */}
                     <div 
                       onClick={triggerPwaInstall} 
                       className={`p-4 flex items-center justify-between cursor-pointer ${isAlreadyInstalled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-500'}`}
@@ -2183,7 +2452,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FLIPKART DESIGNED PROFESSIONAL CART */}
+      {/* FLIPKART DESIGNED PROFESSIONAL CART + CART RESERVE SECTION */}
       {isCartOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex justify-end">
           <div className={`w-full max-w-md h-full p-4 shadow-2xl overflow-y-auto flex flex-col justify-between ${darkMode ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900'}`}>
@@ -2207,9 +2476,9 @@ export default function App() {
               {/* Cart Items List */}
               <div className="space-y-3 max-h-[35vh] overflow-y-auto no-scrollbar">
                 {cart.length === 0 ? (
-                  <div className="text-center py-10 space-y-1">
+                  <div className="text-center py-8 space-y-1">
                     <span className="text-4xl block">🛍️</span>
-                    <p className="text-xs text-zinc-400 font-bold">Your bag is empty.</p>
+                    <p className="text-xs text-zinc-400 font-bold">Your active bag is empty.</p>
                   </div>
                 ) : (
                   cart.map(item => (
@@ -2234,6 +2503,7 @@ export default function App() {
                           <button onClick={() => updateCartQty(item.itemKey, 1)} className="px-2.5 py-1 text-white font-black">+</button>
                         </div>
                         <div className="flex gap-2">
+                          <button onClick={() => saveItemForLater(item)} className="text-[11px] font-bold text-amber-500">Save for Later</button>
                           <button onClick={() => updateCartQty(item.itemKey, -item.qty)} className="text-[11px] font-bold text-zinc-400 hover:text-rose-500">Remove</button>
                           <button onClick={() => moveToWishlist(item)} className="text-[11px] font-bold text-blue-400">Move to Wishlist</button>
                         </div>
@@ -2242,6 +2512,30 @@ export default function App() {
                   ))
                 )}
               </div>
+
+              {/* SAVED FOR LATER / CART RESERVED ROW */}
+              {savedForLater.length > 0 && (
+                <div className={`p-3 rounded-2xl border space-y-2 text-xs ${darkMode ? 'bg-zinc-950/60 border-zinc-800' : 'bg-zinc-50 border-zinc-200'}`}>
+                  <h4 className="font-black uppercase tracking-wider text-[10px] text-amber-500 flex items-center justify-between">
+                    <span>🕒 Saved in Cart ({savedForLater.length})</span>
+                    <span className="text-zinc-400 font-normal">Reserve items</span>
+                  </h4>
+                  <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                    {savedForLater.map(item => (
+                      <div key={item.itemKey} className="flex items-center justify-between p-2 rounded-xl bg-white/5 border border-white/5">
+                        <div className="truncate max-w-[170px]">
+                          <p className="font-bold truncate text-[11px]">{item.name}</p>
+                          <p className="text-[9px] text-zinc-400">{item.selectedSize} • ₹{getDiscountedPrice(item.price, item.discount)}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => moveSavedToBag(item)} className="px-2.5 py-1 bg-amber-500 text-zinc-950 text-[10px] font-black rounded-lg">Move to Bag</button>
+                          <button onClick={() => removeSavedItem(item.itemKey)} className="text-zinc-400 text-xs px-1">✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Coupon Engine */}
               <form onSubmit={handleApplyCoupon} className="flex gap-2 pt-1">
@@ -2304,7 +2598,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FULL PRODUCT DETAILS MODAL (WITH INTERACTIVE SLIDER BUTTONS & TOUCH SWIPE) */}
+      {/* FULL PRODUCT DETAILS MODAL (NATURAL TOUCH-SWIPE & HORIZONTAL SCROLL) */}
       {selectedProduct && (
         <div className={`fixed inset-0 z-50 overflow-y-auto flex flex-col justify-between animate-fadeIn ${darkMode ? 'bg-zinc-950 text-white' : 'bg-white text-zinc-900'}`}>
           <div className={`sticky top-0 backdrop-blur-md z-20 border-b px-4 py-3 flex items-center justify-between shadow-sm ${darkMode ? 'bg-zinc-950/90 border-zinc-800' : 'bg-white/95 border-zinc-200'}`}>
@@ -2322,48 +2616,39 @@ export default function App() {
           </div>
 
           <div className="max-w-2xl mx-auto w-full p-4 space-y-6 pb-28">
-            {/* Interactive Image Slider with Left/Right Arrows */}
-            <div className="relative aspect-[4/5] rounded-3xl overflow-hidden bg-stone-100/80 border flex items-center justify-center p-3">
-              <img 
-                src={(selectedProduct.images || [selectedProduct.img])[currentProductSlide]} 
-                alt={selectedProduct.name} 
-                className="w-full h-full object-contain transition-all duration-300" 
-              />
-              
-              {/* Left Arrow Button */}
-              {(selectedProduct.images || []).length > 1 && (
-                <button 
-                  onClick={prevSlide}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center font-black text-xl shadow-lg active:scale-90"
-                >
-                  ‹
-                </button>
-              )}
+            
+            {/* Smooth Horizontal Touch & Drag Scroll Container */}
+            <div className="relative">
+              <div 
+                ref={sliderRef}
+                onScroll={handleScrollCarousel}
+                className="aspect-[4/5] w-full rounded-3xl overflow-x-auto flex snap-x snap-mandatory no-scrollbar border bg-stone-100/80 shadow-md"
+                style={{ scrollBehavior: 'smooth' }}
+              >
+                {(selectedProduct.images && selectedProduct.images.length > 0 ? selectedProduct.images : [selectedProduct.img]).map((imgUrl, i) => (
+                  <div key={i} className="min-w-full h-full snap-center flex items-center justify-center p-3 relative">
+                    <img 
+                      src={imgUrl} 
+                      alt={`${selectedProduct.name} - ${i + 1}`} 
+                      className="w-full h-full object-contain pointer-events-none" 
+                    />
+                  </div>
+                ))}
+              </div>
 
-              {/* Right Arrow Button */}
-              {(selectedProduct.images || []).length > 1 && (
-                <button 
-                  onClick={nextSlide}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center font-black text-xl shadow-lg active:scale-90"
-                >
-                  ›
-                </button>
-              )}
-
-              {(selectedProduct.images || []).length > 1 && (
-                <div className="absolute bottom-3 right-3 bg-black/75 text-white text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm">
-                  {currentProductSlide + 1} / {selectedProduct.images.length}
-                </div>
-              )}
+              {/* Scroll Dots / Slide Counter Badge */}
+              <div className="absolute bottom-3 right-3 bg-black/75 text-white text-[10px] font-black px-2.5 py-1 rounded-full backdrop-blur-sm pointer-events-none">
+                {currentProductSlide + 1} / {(selectedProduct.images || [selectedProduct.img]).length}
+              </div>
             </div>
 
-            {/* Thumbnails Row */}
+            {/* Clickable Horizontal Scroll Thumbnails */}
             {(selectedProduct.images || []).length > 1 && (
               <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
                 {selectedProduct.images.map((img, idx) => (
                   <div 
                     key={idx} 
-                    onClick={() => setCurrentProductSlide(idx)}
+                    onClick={() => scrollToIndex(idx)}
                     className={`w-16 h-20 rounded-xl overflow-hidden border-2 cursor-pointer bg-stone-100/70 p-1 flex items-center justify-center transition-all ${currentProductSlide === idx ? 'border-amber-500 scale-105 shadow-sm' : 'border-zinc-700 opacity-60'}`}
                   >
                     <img src={img} alt="thumb" className="w-full h-full object-contain" />
@@ -2451,7 +2736,7 @@ export default function App() {
               <p className="text-xs text-zinc-400 leading-relaxed pt-2">{selectedProduct.specifications}</p>
             </div>
 
-            {/* SIMILAR PRODUCTS SECTION */}
+            {/* RELEVANT SIMILAR PRODUCTS SECTION (FIXED: NO SHOE MIXUP) */}
             {similarProducts.length > 0 && (
               <div className="border-t pt-6 space-y-3">
                 <div className="flex justify-between items-center">
@@ -2464,7 +2749,7 @@ export default function App() {
                   {similarProducts.map(sp => (
                     <div 
                       key={sp.id} 
-                      onClick={() => addToRecentlyViewed(sp)} 
+                      onClick={() => openProductModal(sp)} 
                       className={`w-32 shrink-0 cursor-pointer text-center group p-2 rounded-2xl border transition-all ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-zinc-200 text-zinc-900'}`}
                     >
                       <div className="aspect-[4/5] w-full rounded-xl overflow-hidden bg-stone-100/70 p-1 flex items-center justify-center mb-1.5">
@@ -2533,7 +2818,16 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`fixed bottom-0 inset-x-0 border-t p-3.5 z-50 flex gap-3 max-w-2xl mx-auto shadow-2xl ${darkMode ? 'bg-zinc-950/95 border-zinc-800' : 'bg-white/95 border-zinc-200'}`}>
+          {/* TRIPLE ACTION BOTTOM BAR: Save for Later + Add to Bag + Buy Now */}
+          <div className={`fixed bottom-0 inset-x-0 border-t p-3.5 z-50 flex items-center gap-2 max-w-2xl mx-auto shadow-2xl ${darkMode ? 'bg-zinc-950/95 border-zinc-800' : 'bg-white/95 border-zinc-200'}`}>
+            <button 
+              onClick={() => saveItemForLater(selectedProduct)}
+              className="p-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-2xl text-[10px] uppercase flex flex-col items-center justify-center min-w-[65px] active:scale-95"
+              title="Save in Cart"
+            >
+              <span className="text-base">🕒</span>
+              <span className="text-[8px] tracking-tighter">Save Cart</span>
+            </button>
             <button 
               onClick={() => addToCart(selectedProduct, productPageQty)}
               className="flex-1 py-3.5 bg-zinc-800 hover:bg-zinc-700 text-white font-black rounded-2xl text-xs uppercase tracking-wider active:scale-95"
@@ -2542,9 +2836,11 @@ export default function App() {
             </button>
             <button 
               onClick={() => {
-                addToCart(selectedProduct, productPageQty);
-                setSelectedProduct(null);
-                setIsCartOpen(true);
+                const added = addToCart(selectedProduct, productPageQty, true);
+                if (added) {
+                  setSelectedProduct(null);
+                  openCartModal();
+                }
               }}
               className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-zinc-950 font-black rounded-2xl text-xs uppercase tracking-wider shadow-xl active:scale-95"
             >
@@ -2554,7 +2850,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ADMIN EDIT PRODUCT MODAL (WITH FLASH DEAL TOGGLE & FULL CONTROL) */}
+      {/* ADMIN EDIT PRODUCT MODAL (WITH DYNAMIC SUB-CATEGORY) */}
       {editingProduct && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
           <div className={`rounded-3xl p-6 max-w-lg w-full space-y-4 text-xs font-bold border shadow-2xl max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-zinc-200 text-zinc-900'}`}>
@@ -2576,15 +2872,42 @@ export default function App() {
                 </div>
                 <div>
                   <label className="text-[10px] text-zinc-400 font-bold uppercase">Department</label>
-                  <select name="editCategory" defaultValue={editingProduct.category} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-black">
+                  <select 
+                    value={editProductDept} 
+                    onChange={(e) => {
+                      setEditProductDept(e.target.value);
+                      setEditSubCategoryChoice("");
+                    }} 
+                    className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-black"
+                  >
                     {FASHION_DEPARTMENTS.slice(1).map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="text-[10px] text-zinc-400 font-bold uppercase">Sub Category</label>
-                <input name="editSubCategory" defaultValue={editingProduct.subCategory || "General"} className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" />
+              {/* Dynamic Edit Sub Category */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Sub-Category</label>
+                  <select 
+                    value={editSubCategoryChoice} 
+                    onChange={(e) => setEditSubCategoryChoice(e.target.value)}
+                    className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold"
+                  >
+                    <option value="">Keep / Custom</option>
+                    {FASHION_COLLECTIONS_MAP[editProductDept]?.map(c => (
+                      <option key={c.name} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-zinc-400 font-bold uppercase">Custom Sub-Category</label>
+                  <input 
+                    name="editSubCategoryCustom" 
+                    defaultValue={editingProduct.subCategory} 
+                    className="w-full border p-2.5 rounded-xl bg-white text-zinc-900 font-bold" 
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -2913,35 +3236,28 @@ export default function App() {
         </div>
       )}
 
-      {/* MOBILE BOTTOM NAVIGATION DOCK */}
+      {/* RESTRUCTURED MOBILE BOTTOM NAVIGATION DOCK (Categories added, clean layout) */}
       {!isAdminUrl && (
         <nav className={`fixed bottom-0 inset-x-0 border-t p-2 z-40 flex justify-around items-center max-w-md md:max-w-xl mx-auto rounded-t-3xl shadow-2xl ${darkMode ? 'bg-zinc-950/95 border-zinc-800' : 'bg-white/95 border-zinc-200'}`}>
           <button 
             onClick={() => { setActiveTab("shop"); setActiveDepartment("All"); setActiveCollection("All"); }} 
-            className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'All' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
+            className={`flex flex-col items-center transition-colors ${activeTab === 'shop' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
           >
             <span className="text-lg">🏠</span>
             <span className="text-[9px] uppercase tracking-wider mt-0.5">Home</span>
           </button>
           
+          {/* Centralized Categories Tab (Replaced single Men/Women tabs) */}
           <button 
-            onClick={() => { setActiveDepartment("Men"); setActiveCollection("All"); setActiveTab("shop"); }} 
-            className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'Men' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
+            onClick={() => setActiveTab("categories")} 
+            className={`flex flex-col items-center transition-colors ${activeTab === 'categories' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
           >
-            <span className="text-lg">👕</span>
-            <span className="text-[9px] uppercase tracking-wider mt-0.5">Men</span>
+            <span className="text-lg">🗂️</span>
+            <span className="text-[9px] uppercase tracking-wider mt-0.5">Categories</span>
           </button>
 
           <button 
-            onClick={() => { setActiveDepartment("Women"); setActiveCollection("All"); setActiveTab("shop"); }} 
-            className={`flex flex-col items-center transition-colors ${activeTab === 'shop' && activeDepartment === 'Women' ? 'text-amber-500 font-black' : 'text-zinc-400'}`}
-          >
-            <span className="text-lg">👗</span>
-            <span className="text-[9px] uppercase tracking-wider mt-0.5">Women</span>
-          </button>
-
-          <button 
-            onClick={() => setIsCartOpen(true)} 
+            onClick={openCartModal} 
             className="flex flex-col items-center relative text-zinc-300"
           >
             <div className="relative">
